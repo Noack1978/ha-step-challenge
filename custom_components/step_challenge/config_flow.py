@@ -28,11 +28,10 @@ def _make_key(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_")
 
 
-# Entity selector: shows only sensors whose entity_id contains "daily_steps"
+# Entity selector: all sensors (no pattern filter – not supported in HA 2026.x)
 _STEP_ENTITY_SELECTOR = selector.selector({
     "entity": {
         "domain": "sensor",
-        "entity_id_pattern": "*daily_steps*",
     }
 })
 
@@ -143,7 +142,6 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 # ── Options Flow ──────────────────────────────────────────────────────────────
 
 class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
-    """Manage participants and settings after initial setup."""
 
     def __init__(self, config_entry) -> None:
         self._participants: list[dict] = list(
@@ -164,8 +162,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
             CONF_RECORD_TIME,
             config_entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME),
         )
-
-    # ── Main menu ─────────────────────────────────────────────────────────────
 
     async def async_step_init(self, user_input=None) -> FlowResult:
         if user_input is not None:
@@ -192,8 +188,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                 "count":          str(len(self._participants)),
             },
         )
-
-    # ── Add ───────────────────────────────────────────────────────────────────
 
     async def async_step_add_participant(self, user_input=None) -> FlowResult:
         errors: dict = {}
@@ -243,8 +237,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
             },
         )
 
-    # ── Remove ────────────────────────────────────────────────────────────────
-
     async def async_step_remove_participant(self, user_input=None) -> FlowResult:
         if not self._participants:
             return await self.async_step_init()
@@ -283,8 +275,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
             description_placeholders={"current_participants": current},
         )
 
-    # ── Settings ──────────────────────────────────────────────────────────────
-
     async def async_step_settings(self, user_input=None) -> FlowResult:
         if user_input is not None:
             self._name        = user_input[CONF_CHALLENGE_NAME].strip()
@@ -302,8 +292,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                 vol.Required(CONF_RECORD_TIME, default=self._record_time): _TIME_SELECTOR,
             }),
         )
-
-    # ── Save ──────────────────────────────────────────────────────────────────
 
     def _save(self) -> FlowResult:
         return self.async_create_entry(

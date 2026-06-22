@@ -21,7 +21,7 @@
           "step_entity": "Schritt-Sensor"
         },
         "data_description": {
-          "step_entity": "Wähle den Sensor aus der Liste. Es werden nur Sensoren angezeigt, deren Entity-ID 'daily_steps' enthält."
+          "step_entity": "Wähle den Schritt-Sensor aus der Liste. Suche nach einem Sensor mit \"daily_steps\" im Namen."
         }
       },
       "add_more": {
@@ -58,7 +58,7 @@
           "step_entity": "Schritt-Sensor"
         },
         "data_description": {
-          "step_entity": "Wähle den Sensor aus der Liste. Es werden nur Sensoren angezeigt, deren Entity-ID 'daily_steps' enthält."
+          "step_entity": "Wähle den Schritt-Sensor aus der Liste. Suche nach einem Sensor mit \"daily_steps\" im Namen."
         }
       },
       "add_another": {

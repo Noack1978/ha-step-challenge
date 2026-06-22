@@ -21,7 +21,7 @@
           "step_entity": "Step sensor"
         },
         "data_description": {
-          "step_entity": "Select from the list. Only sensors whose entity ID contains 'daily_steps' are shown."
+          "step_entity": "Select the step sensor from the list. Look for a sensor with \"daily_steps\" in its name."
         }
       },
       "add_more": {
@@ -58,7 +58,7 @@
           "step_entity": "Step sensor"
         },
         "data_description": {
-          "step_entity": "Select from the list. Only sensors whose entity ID contains 'daily_steps' are shown."
+          "step_entity": "Select the step sensor from the list. Look for a sensor with \"daily_steps\" in its name."
         }
       },
       "add_another": {
