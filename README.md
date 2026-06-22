@@ -11,42 +11,34 @@
 
 ### Was es tut
 
-**ha-step-challenge** verwandelt tägliche Schrittzahlen in ein visuelles Rennen. Jeden Tag gewinnt der Teilnehmer mit den meisten Schritten eine Etappe. Etappensiege summieren sich über die Challenge-Dauer und werden als animiertes Rennen dargestellt.
+**ha-step-challenge** verwandelt tägliche Schrittzahlen in ein visuelles Rennen. Jeden Tag gewinnt der Teilnehmer mit den meisten Schritten eine Etappe. Etappensiege summieren sich über die Challenge-Dauer und werden als animiertes Rennen in einer Custom Lovelace Card dargestellt.
 
 **Alles wird automatisch eingerichtet** – keine Helfer, Automationen oder YAML-Änderungen nötig.
 
 ### Funktionen
 
-- **Kein manueller Aufwand** nach der Installation: tägliche Automation, Rennpanel und Sensoren werden automatisch erstellt
+- **Kein manueller Aufwand** nach der Installation: Lovelace-Ressource, Sidebar-Panel und Sensoren werden automatisch erstellt
 - Unbegrenzte Teilnehmeranzahl – jederzeit über *Einstellungen → Geräte & Dienste → Step Challenge → Konfigurieren* ändern
 - Jeder Teilnehmer wird mit einem beliebigen Schritt-Sensor verknüpft (Google Fit, Apple Health, Fitbit, Samsung Health, …)
-- Animiertes Rennpanel mit Fortschrittsbalken, Etappenkalender und Ergebnistabelle
-- Start / Stop / Etappe werten direkt im Panel
+- Animierte Rennkarte mit Fortschrittsbalken, Etappenkalender und Ergebnistabelle
+- Start / Stop / Etappe werten direkt in der Karte
 - Vier Sensoren: Etappensiege je Teilnehmer, vergangene Tage, Status, aktueller Führender
 - Alle Daten in HA `.storage` gespeichert – kein externer Dienst oder Datenbank nötig
 
 ### Installation
 
-#### Via HACS (empfohlen)
-
-1. HACS → **Integrationen** → ⋮ → **Benutzerdefinierte Repositories**
-2. `https://github.com/Noack1978/ha-step-challenge` als Typ **Integration** hinzufügen
-3. **Step Challenge** installieren und Home Assistant neu starten
-
-#### Manuell
-
-1. `custom_components/step_challenge/` nach `/config/custom_components/step_challenge/` kopieren
-2. Home Assistant neu starten
+Via HACS: Benutzerdefiniertes Repository `https://github.com/Noack1978/ha-step-challenge` als Typ **Integration** hinzufügen, installieren und Home Assistant neu starten.
 
 ### Einrichtung
 
 1. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Step Challenge**
-2. Challenge-Name und Dauer eingeben
+2. Challenge-Name, Dauer und Auswertungszeit eingeben
 3. Mindestens zwei Teilnehmer hinzufügen – je Name und Schritt-Sensor-Entity
 4. Bei Aufforderung neu starten
 
 Die Integration richtet automatisch ein:
-- Das Rennpanel unter `http://deine-ha-ip/local/step_challenge/index.html`
+- Die Custom Card `custom:step-challenge-card` als Lovelace-Ressource
+- Das Rennpanel in der Seitenleiste unter „Step Challenge"
 - Sensoren für jeden Teilnehmer und die Challenge insgesamt
 
 Nach der Einrichtung erscheint eine Benachrichtigung in HA mit dem Link zum Blueprint für die tägliche Auswertung. Den Blueprint einmalig importieren unter *Einstellungen → Automationen → Blueprints → Blueprint importieren*.
@@ -56,35 +48,20 @@ Nach der Einrichtung erscheint eine Benachrichtigung in HA mit dem Link zum Blue
 Jederzeit über **Einstellungen → Geräte & Dienste → Step Challenge → Konfigurieren**:
 - ➕ Teilnehmer hinzufügen
 - ➖ Teilnehmer entfernen
-- ⚙️ Challenge-Name oder Dauer ändern
+- ⚙️ Challenge-Name, Dauer oder Auswertungszeit ändern
 
 ### Challenge starten
 
-**Start**-Button im Rennpanel, oder den Dienst `step_challenge.start` per Dashboard-Button aufrufen.
+**Start**-Button in der Rennkarte, oder den Dienst `step_challenge.start` aufrufen.
 
 ### Das Rennpanel anzeigen
 
-Das Panel wird automatisch in der **Seitenleiste** unter „Step Challenge" eingetragen.
+Das Panel erscheint automatisch in der **Seitenleiste** unter „Step Challenge".
 
-Wer das Panel lieber **direkt in einem Dashboard** einbinden möchte, kann eine Webpage-Karte verwenden:
-
-```yaml
-type: iframe
-url: /local/step_challenge/index.html
-aspect_ratio: 75%
-```
-
-Oder als Button, der das Panel in einem neuen Tab öffnet:
+Die Karte lässt sich außerdem in jedes Dashboard einfügen:
 
 ```yaml
-show_name: true
-show_icon: true
-type: button
-name: Step Challenge
-icon: mdi:racing-helmet
-tap_action:
-  action: url
-  url_path: /local/step_challenge/index.html
+type: custom:step-challenge-card
 ```
 
 ### Dienste
@@ -101,42 +78,34 @@ tap_action:
 
 ### What it does
 
-**ha-step-challenge** turns daily step counts into a visual race. The participant with the most steps each day wins a stage. Stages accumulate over the full challenge duration and are displayed as an animated race.
+**ha-step-challenge** turns daily step counts into a visual race. The participant with the most steps each day wins a stage. Stages accumulate over the full challenge duration and are displayed as an animated race in a custom Lovelace card.
 
 **Everything is set up automatically** – no helpers, automations, or YAML edits required.
 
 ### Features
 
-- **Zero manual setup** after installation: daily automation, race panel, and sensors are created automatically
+- **Zero manual setup** after installation: Lovelace resource, sidebar panel, and sensors are created automatically
 - Unlimited participants – add or remove them at any time via *Settings → Devices & Services → Step Challenge → Configure*
 - Each participant links to any step-count sensor (Google Fit, Apple Health, Fitbit, Samsung Health, …)
-- Animated race panel with progress bars, stage calendar, and results table
-- Control buttons (Start / Stop / Record Day) directly in the panel
+- Animated race card with progress bars, stage calendar, and results table
+- Control buttons (Start / Stop / Record Day) directly in the card
 - Four sensors: stage wins per participant, days elapsed, status, current leader
 - All data stored in HA `.storage` – no external service or database required
 
 ### Installation
 
-#### Via HACS (recommended)
-
-1. HACS → **Integrations** → ⋮ → **Custom repositories**
-2. Add `https://github.com/Noack1978/ha-step-challenge` as type **Integration**
-3. Install **Step Challenge** and restart Home Assistant
-
-#### Manual
-
-1. Copy `custom_components/step_challenge/` to `/config/custom_components/step_challenge/`
-2. Restart Home Assistant
+Via HACS: Add custom repository `https://github.com/Noack1978/ha-step-challenge` as type **Integration**, install, and restart Home Assistant.
 
 ### Setup
 
 1. **Settings → Devices & Services → Add Integration → Step Challenge**
-2. Enter a challenge name and duration
-3. Add at least two participants – each needs a display name and the entity ID of their step sensor
+2. Enter a challenge name, duration, and daily evaluation time
+3. Add at least two participants – each needs a display name and step sensor entity ID
 4. Restart if prompted
 
 The integration automatically:
-- Makes the race panel available at `http://your-ha-ip/local/step_challenge/index.html`
+- Registers the `custom:step-challenge-card` as a Lovelace resource
+- Adds the race panel to the sidebar under "Step Challenge"
 - Creates sensors for each participant and the overall challenge
 
 After setup, a notification appears in HA with a link to the daily evaluation blueprint. Import it once via *Settings → Automations → Blueprints → Import Blueprint*.
@@ -146,35 +115,20 @@ After setup, a notification appears in HA with a link to the daily evaluation bl
 Go to **Settings → Devices & Services → Step Challenge → Configure** at any time to:
 - ➕ Add a new participant
 - ➖ Remove a participant
-- ⚙️ Change the challenge name or duration
+- ⚙️ Change the challenge name, duration, or evaluation time
 
 ### Starting a challenge
 
-Use the **Start** button in the race panel, or call the service `step_challenge.start` from a dashboard button, script, or automation.
+Use the **Start** button in the race card, or call the service `step_challenge.start`.
 
 ### Displaying the race panel
 
 The panel is automatically added to the **sidebar** under "Step Challenge".
 
-To embed it directly in a **dashboard view** instead, use a Webpage card:
+The card can also be added to any dashboard:
 
 ```yaml
-type: iframe
-url: /local/step_challenge/index.html
-aspect_ratio: 75%
-```
-
-Or as a button that opens the panel in a new tab:
-
-```yaml
-show_name: true
-show_icon: true
-type: button
-name: Step Challenge
-icon: mdi:racing-helmet
-tap_action:
-  action: url
-  url_path: /local/step_challenge/index.html
+type: custom:step-challenge-card
 ```
 
 ### Services
