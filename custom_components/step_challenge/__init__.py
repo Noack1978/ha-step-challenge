@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from datetime import datetime
+from pathlib import Path
 
 from homeassistant.components.frontend import async_register_built_in_panel
 from homeassistant.components.persistent_notification import async_create as pn_create
@@ -21,29 +23,10 @@ from .const import (
     SERVICE_RECORD_DAY,
     SERVICE_START,
     SERVICE_STOP,
-    URL_BASE,
 )
-from .frontend import JSModuleRegistration
 from .storage import ChallengeStore
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Register the Lovelace card JS resource (once, not per config entry)."""
-    hass.data.setdefault(DOMAIN, {})
-
-    async def _register_frontend(_event=None) -> None:
-        registrar = JSModuleRegistration(hass)
-        await registrar.async_register()
-        hass.data[DOMAIN]["js_registrar"] = registrar
-
-    if hass.state is CoreState.running:
-        await _register_frontend()
-    else:
-        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _register_frontend)
-
-    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -55,8 +38,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {"store": store}
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.async_add_executor_job(_provision_www, hass)
 
-    # Panel registrieren – muss direkt im Event-Loop aufgerufen werden (nicht via Lambda)
     @callback
     def _register_panel(_event=None) -> None:
         try:
@@ -66,11 +49,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 sidebar_title="Step Challenge",
                 sidebar_icon="mdi:racing-helmet",
                 frontend_url_path=DOMAIN,
-                config={"url": f"{URL_BASE}/panel.html?v={INTEGRATION_VERSION}"},
+                config={"url": f"/local/{DOMAIN}/index.html?v={INTEGRATION_VERSION}"},
                 require_admin=False,
             )
         except Exception:  # noqa: BLE001
-            pass  # Already registered after reload
+            pass
 
     if hass.state is CoreState.running:
         _register_panel()
@@ -88,12 +71,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         title="Step Challenge",
         message=(
             f"✅ Step Challenge ist bereit!\n\n"
-            f"Blueprint importieren für die tägliche Auswertung um **{record_time}**:\n"
-            f"*Einstellungen → Automationen → Blueprints → Blueprint importieren*\n\n"
+            f"**Erster Start:** Im Panel oben rechts auf 🔑 tippen und einen "
+            f"Langlebigen Zugriffstoken eingeben.\n"
+            f"*Profil → Sicherheit → Langlebige Zugriffstoken*\n\n"
+            f"**Blueprint** für die tägliche Auswertung um **{record_time}**:\n"
+            f"*Einstellungen → Automationen → Blueprints → Blueprint importieren*\n"
             f"`https://github.com/Noack1978/ha-step-challenge/blob/main/"
-            f"blueprints/automation/step_challenge/daily_stage.yaml`\n\n"
-            f"Die Karte ist auch in jedem Dashboard verfügbar:\n"
-            f"`custom:step-challenge-card`"
+            f"blueprints/automation/step_challenge/daily_stage.yaml`"
         ),
         notification_id=f"{DOMAIN}_setup_hint",
     )
@@ -106,16 +90,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-        remaining = [k for k in hass.data[DOMAIN] if k != "js_registrar"]
-        if not remaining:
+        if not hass.data[DOMAIN]:
             from homeassistant.components.frontend import async_remove_panel
             try:
                 async_remove_panel(hass, DOMAIN)
             except Exception:  # noqa: BLE001
                 pass
-            registrar = hass.data[DOMAIN].get("js_registrar")
-            if registrar:
-                await registrar.async_unregister()
     return unload_ok
 
 
@@ -123,7 +103,14 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-# ── Services ──────────────────────────────────────────────────────────────────
+def _provision_www(hass: HomeAssistant) -> None:
+    src_dir = Path(__file__).parent / "www"
+    dst_dir = Path(hass.config.path("www", DOMAIN))
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for src_file in src_dir.iterdir():
+        if src_file.is_file():
+            shutil.copy2(src_file, dst_dir / src_file.name)
+
 
 def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
@@ -135,7 +122,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         return e.options.get(CONF_PARTICIPANTS, e.data.get(CONF_PARTICIPANTS, []))
 
     def _entry_ids() -> list[str]:
-        return [k for k in hass.data[DOMAIN] if k != "js_registrar"]
+        return list(hass.data[DOMAIN].keys())
 
     async def _start(call: ServiceCall) -> None:
         for entry_id in _entry_ids():

@@ -3,7 +3,6 @@ from pathlib import Path
 import json
 from typing import Final
 
-# Read version from manifest.json at import time (no blocking in event loop)
 try:
     _manifest = json.loads((Path(__file__).parent / "manifest.json").read_text(encoding="utf-8"))
     INTEGRATION_VERSION: Final[str] = _manifest.get("version", "1.0.0")
@@ -16,24 +15,17 @@ STORAGE_VERSION: Final[int] = 1
 
 PLATFORMS: Final[list[str]] = ["sensor"]
 
-# Frontend
-URL_BASE: Final[str] = "/step-challenge-card"
-CARD_FILENAME: Final[str] = "step-challenge-card.js"
-
-# Config / Options keys
 CONF_CHALLENGE_NAME: Final[str] = "challenge_name"
-CONF_DURATION_DAYS: Final[str] = "duration_days"
-CONF_PARTICIPANTS: Final[str] = "participants"
-CONF_RECORD_TIME: Final[str] = "record_time"
+CONF_DURATION_DAYS: Final[str]  = "duration_days"
+CONF_PARTICIPANTS: Final[str]   = "participants"
+CONF_RECORD_TIME: Final[str]    = "record_time"
 
-# Services
-SERVICE_START: Final[str] = "start"
-SERVICE_STOP: Final[str] = "stop"
+SERVICE_START: Final[str]      = "start"
+SERVICE_STOP: Final[str]       = "stop"
 SERVICE_RECORD_DAY: Final[str] = "record_day"
 
-# Defaults
 DEFAULT_CHALLENGE_NAME: Final[str] = "Step Challenge"
-DEFAULT_DURATION_DAYS: Final[int] = 30
-DEFAULT_RECORD_TIME: Final[str] = "23:00:00"
-MIN_PARTICIPANTS: Final[int] = 2
-MAX_HISTORY: Final[int] = 365
+DEFAULT_DURATION_DAYS: Final[int]  = 30
+DEFAULT_RECORD_TIME: Final[str]    = "23:00:00"
+MIN_PARTICIPANTS: Final[int]       = 2
+MAX_HISTORY: Final[int]            = 365
