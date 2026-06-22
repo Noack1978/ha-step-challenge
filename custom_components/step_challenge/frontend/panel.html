@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Step Challenge</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--primary-background-color, #111); }
+  step-challenge-card { display: block; max-width: 800px; margin: 0 auto; padding: 8px; }
+</style>
+</head>
+<body>
+<step-challenge-card id="card"></step-challenge-card>
+<script type="module" src="/step-challenge-card/step-challenge-card.js"></script>
+<script>
+  const card = document.getElementById('card');
+  card.setConfig({});
+
+  // Get hass from parent HA frontend
+  async function connectHass() {
+    try {
+      // HA iframe panels expose hassConnection on the parent window
+      const conn = await window.parent.hassConnection;
+      const hass = window.parent.customPanel?.hass || null;
+
+      if (hass) {
+        card.hass = hass;
+      }
+
+      // Subscribe to hass updates from parent
+      if (window.parent.__hass_panel_hass_subscribe) {
+        window.parent.__hass_panel_hass_subscribe(newHass => {
+          card.hass = newHass;
+        });
+      } else {
+        // Fallback: poll parent for hass updates
+        setInterval(() => {
+          const h = window.parent.document.querySelector('home-assistant')?.hass;
+          if (h) card.hass = h;
+        }, 2000);
+      }
+    } catch(e) {
+      // Last resort: get hass from parent DOM
+      const tryGetHass = () => {
+        const h = window.parent.document.querySelector('home-assistant')?._hass
+               || window.parent.document.querySelector('home-assistant')?.hass;
+        if (h) { card.hass = h; }
+        else { setTimeout(tryGetHass, 500); }
+      };
+      tryGetHass();
+    }
+  }
+
+  connectHass();
+</script>
+</body>
+</html>
