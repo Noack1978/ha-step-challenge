@@ -21,6 +21,7 @@ from .const import (
     SERVICE_RECORD_DAY,
     SERVICE_START,
     SERVICE_STOP,
+    URL_BASE,
 )
 from .frontend import JSModuleRegistration
 from .storage import ChallengeStore
@@ -29,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Register the Lovelace card resource once (not per config entry)."""
+    """Register the Lovelace card JS resource (once, not per config entry)."""
     hass.data.setdefault(DOMAIN, {})
 
     async def _register_frontend(_event=None) -> None:
@@ -55,18 +56,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register sidebar panel as a Lovelace dashboard containing the custom card
+    # Sidebar panel: iframe → panel.html (served from frontend/)
+    # panel.html loads the custom card JS and gets hass from the parent frame
     try:
         async_register_built_in_panel(
             hass,
-            component_name="lovelace",
+            component_name="iframe",
             sidebar_title="Step Challenge",
             sidebar_icon="mdi:racing-helmet",
             frontend_url_path=DOMAIN,
-            config={
-                "mode": "storage",
-                "id": f"{DOMAIN}_panel",
-            },
+            config={"url": f"{URL_BASE}/panel.html?v={INTEGRATION_VERSION}"},
             require_admin=False,
         )
     except Exception:  # noqa: BLE001
@@ -74,7 +73,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _register_services(hass, entry)
 
-    # Notify user about blueprint setup
     record_time = entry.options.get(
         CONF_RECORD_TIME,
         entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME),
@@ -83,14 +81,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass,
         title="Step Challenge",
         message=(
-            f"✅ Step Challenge is ready!\n\n"
-            f"**Next step:** Import the blueprint for automatic daily evaluation "
-            f"at **{record_time}**.\n\n"
-            f"Go to *Settings → Automations → Blueprints → Import Blueprint* and use:\n"
+            f"✅ Step Challenge ist bereit!\n\n"
+            f"Blueprint importieren für die tägliche Auswertung um **{record_time}**:\n"
+            f"*Einstellungen → Automationen → Blueprints → Blueprint importieren*\n\n"
             f"`https://github.com/Noack1978/ha-step-challenge/blob/main/"
             f"blueprints/automation/step_challenge/daily_stage.yaml`\n\n"
-            f"The race panel is available in the sidebar under **Step Challenge** "
-            f"or add a `custom:step-challenge-card` to any dashboard."
+            f"Die Karte ist auch in jedem Dashboard verfügbar:\n"
+            f"`custom:step-challenge-card`"
         ),
         notification_id=f"{DOMAIN}_setup_hint",
     )
@@ -103,7 +100,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-        # Remove panel when last entry is gone
         remaining = [k for k in hass.data[DOMAIN] if k != "js_registrar"]
         if not remaining:
             from homeassistant.components.frontend import async_remove_panel
@@ -111,7 +107,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 async_remove_panel(hass, DOMAIN)
             except Exception:  # noqa: BLE001
                 pass
-            # Unregister JS resource
             registrar = hass.data[DOMAIN].get("js_registrar")
             if registrar:
                 await registrar.async_unregister()
@@ -138,8 +133,8 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     async def _start(call: ServiceCall) -> None:
         for entry_id in _entry_ids():
-            store  = _store(entry_id)
-            parts  = _participants(entry_id)
+            store = _store(entry_id)
+            parts = _participants(entry_id)
             store.reset(
                 participant_keys=[p["key"] for p in parts],
                 start_iso=ha_now().isoformat(),
@@ -153,14 +148,12 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             _store(entry_id).stop()
             await _store(entry_id).async_save()
         hass.bus.async_fire(f"{DOMAIN}_stopped")
-        _LOGGER.info("Step Challenge stopped")
 
     async def _record_day(call: ServiceCall) -> None:
         for entry_id in _entry_ids():
             store = _store(entry_id)
             if not store.active:
                 continue
-
             parts = _participants(entry_id)
             steps: dict[str, int] = {}
             for p in parts:
@@ -175,7 +168,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                     steps[p["key"]] = 0
 
             if not steps or all(v == 0 for v in steps.values()):
-                _LOGGER.warning("Step Challenge: no valid step data for record_day")
+                _LOGGER.warning("Step Challenge: no valid step data")
                 continue
 
             winner_key = max(steps, key=lambda k: steps[k])
@@ -183,7 +176,6 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 (p["name"] for p in parts if p["key"] == winner_key), winner_key
             )
             date_str = datetime.now().strftime("%Y-%m-%d")
-
             store.record_stage(date_str, winner_key, steps)
             await store.async_save()
 
