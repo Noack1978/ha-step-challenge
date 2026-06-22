@@ -8,7 +8,7 @@ from homeassistant.components.frontend import async_register_built_in_panel
 from homeassistant.components.persistent_notification import async_create as pn_create
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import CoreState, HomeAssistant, ServiceCall
+from homeassistant.core import CoreState, HomeAssistant, ServiceCall, callback
 from homeassistant.util.dt import now as ha_now
 
 from .const import (
@@ -56,20 +56,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Sidebar panel: iframe → panel.html (served from frontend/)
-    # panel.html loads the custom card JS and gets hass from the parent frame
-    try:
-        async_register_built_in_panel(
-            hass,
-            component_name="iframe",
-            sidebar_title="Step Challenge",
-            sidebar_icon="mdi:racing-helmet",
-            frontend_url_path=DOMAIN,
-            config={"url": f"{URL_BASE}/panel.html?v={INTEGRATION_VERSION}"},
-            require_admin=False,
-        )
-    except Exception:  # noqa: BLE001
-        pass  # Already registered after reload
+    # Panel registrieren – muss direkt im Event-Loop aufgerufen werden (nicht via Lambda)
+    @callback
+    def _register_panel(_event=None) -> None:
+        try:
+            async_register_built_in_panel(
+                hass,
+                component_name="iframe",
+                sidebar_title="Step Challenge",
+                sidebar_icon="mdi:racing-helmet",
+                frontend_url_path=DOMAIN,
+                config={"url": f"{URL_BASE}/panel.html?v={INTEGRATION_VERSION}"},
+                require_admin=False,
+            )
+        except Exception:  # noqa: BLE001
+            pass  # Already registered after reload
+
+    if hass.state is CoreState.running:
+        _register_panel()
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _register_panel)
 
     _register_services(hass, entry)
 
