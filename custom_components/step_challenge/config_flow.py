@@ -7,13 +7,16 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
 from .const import (
     CONF_CHALLENGE_NAME,
     CONF_DURATION_DAYS,
     CONF_PARTICIPANTS,
+    CONF_RECORD_TIME,
     DEFAULT_CHALLENGE_NAME,
     DEFAULT_DURATION_DAYS,
+    DEFAULT_RECORD_TIME,
     DOMAIN,
     MIN_PARTICIPANTS,
 )
@@ -25,52 +28,58 @@ def _make_key(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_")
 
 
-def _entity_exists(hass, entity_id: str) -> bool:
-    return hass.states.get(entity_id.strip()) is not None
+# Entity selector: shows only sensors whose entity_id contains "daily_steps"
+_STEP_ENTITY_SELECTOR = selector.selector({
+    "entity": {
+        "domain": "sensor",
+        "entity_id_pattern": "*daily_steps*",
+    }
+})
+
+_TIME_SELECTOR = selector.selector({"time": {}})
 
 
 # ── Config Flow ───────────────────────────────────────────────────────────────
 
 class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Initial setup: name + duration, then add participants one by one."""
+    """Initial setup."""
 
     VERSION = 1
 
     def __init__(self) -> None:
         self._name: str = DEFAULT_CHALLENGE_NAME
         self._duration: int = DEFAULT_DURATION_DAYS
+        self._record_time: str = DEFAULT_RECORD_TIME
         self._participants: list[dict] = []
 
     async def async_step_user(self, user_input=None) -> FlowResult:
         await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
 
-        errors: dict = {}
         if user_input is not None:
-            self._name = user_input[CONF_CHALLENGE_NAME].strip()
-            self._duration = int(user_input[CONF_DURATION_DAYS])
+            self._name        = user_input[CONF_CHALLENGE_NAME].strip()
+            self._duration    = int(user_input[CONF_DURATION_DAYS])
+            self._record_time = user_input[CONF_RECORD_TIME]
             return await self.async_step_add_participant()
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required(CONF_CHALLENGE_NAME, default=DEFAULT_CHALLENGE_NAME): str,
-                vol.Required(CONF_DURATION_DAYS, default=DEFAULT_DURATION_DAYS): vol.All(
+                vol.Required(CONF_DURATION_DAYS,  default=DEFAULT_DURATION_DAYS): vol.All(
                     int, vol.Range(min=7, max=365)
                 ),
+                vol.Required(CONF_RECORD_TIME, default=DEFAULT_RECORD_TIME): _TIME_SELECTOR,
             }),
-            errors=errors,
         )
 
     async def async_step_add_participant(self, user_input=None) -> FlowResult:
         errors: dict = {}
         if user_input is not None:
-            name = user_input["participant_name"].strip()
-            entity = user_input["step_entity"].strip()
+            name   = user_input["participant_name"].strip()
+            entity = user_input["step_entity"]
             if not name:
                 errors["participant_name"] = "empty_name"
-            elif not _entity_exists(self.hass, entity):
-                errors["step_entity"] = "invalid_entity"
             else:
                 key = _make_key(name)
                 if any(p["key"] == key for p in self._participants):
@@ -84,7 +93,7 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="add_participant",
             data_schema=vol.Schema({
                 vol.Required("participant_name"): str,
-                vol.Required("step_entity"): str,
+                vol.Required("step_entity"): _STEP_ENTITY_SELECTOR,
             }),
             description_placeholders={
                 "current_participants": current,
@@ -103,8 +112,9 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title=self._name,
                 data={
                     CONF_CHALLENGE_NAME: self._name,
-                    CONF_DURATION_DAYS: self._duration,
-                    CONF_PARTICIPANTS: self._participants,
+                    CONF_DURATION_DAYS:  self._duration,
+                    CONF_RECORD_TIME:    self._record_time,
+                    CONF_PARTICIPANTS:   self._participants,
                 },
             )
 
@@ -113,14 +123,14 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="add_more",
             data_schema=vol.Schema({
                 vol.Required("action", default="add"): vol.In({
-                    "add": "Add another participant",
+                    "add":    "Add another participant",
                     "finish": "Finish setup",
                 }),
             }),
             description_placeholders={
                 "current_participants": current,
                 "count": str(len(self._participants)),
-                "min": str(MIN_PARTICIPANTS),
+                "min":   str(MIN_PARTICIPANTS),
             },
         )
 
@@ -133,7 +143,7 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 # ── Options Flow ──────────────────────────────────────────────────────────────
 
 class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
-    """Manage participants and challenge settings after initial setup."""
+    """Manage participants and settings after initial setup."""
 
     def __init__(self, config_entry) -> None:
         self._participants: list[dict] = list(
@@ -150,18 +160,19 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
             CONF_DURATION_DAYS,
             config_entry.data.get(CONF_DURATION_DAYS, DEFAULT_DURATION_DAYS),
         )
+        self._record_time: str = config_entry.options.get(
+            CONF_RECORD_TIME,
+            config_entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME),
+        )
 
     # ── Main menu ─────────────────────────────────────────────────────────────
 
     async def async_step_init(self, user_input=None) -> FlowResult:
         if user_input is not None:
             action = user_input["action"]
-            if action == "add":
-                return await self.async_step_add_participant()
-            if action == "remove":
-                return await self.async_step_remove_participant()
-            if action == "settings":
-                return await self.async_step_settings()
+            if action == "add":      return await self.async_step_add_participant()
+            if action == "remove":   return await self.async_step_remove_participant()
+            if action == "settings": return await self.async_step_settings()
 
         plist = ", ".join(p["name"] for p in self._participants) or "—"
         return self.async_show_form(
@@ -175,9 +186,10 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
             }),
             description_placeholders={
                 "challenge_name": self._name,
-                "duration": str(self._duration),
-                "participants": plist,
-                "count": str(len(self._participants)),
+                "duration":       str(self._duration),
+                "record_time":    self._record_time,
+                "participants":   plist,
+                "count":          str(len(self._participants)),
             },
         )
 
@@ -186,12 +198,10 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
     async def async_step_add_participant(self, user_input=None) -> FlowResult:
         errors: dict = {}
         if user_input is not None:
-            name = user_input["participant_name"].strip()
-            entity = user_input["step_entity"].strip()
+            name   = user_input["participant_name"].strip()
+            entity = user_input["step_entity"]
             if not name:
                 errors["participant_name"] = "empty_name"
-            elif not _entity_exists(self.hass, entity):
-                errors["step_entity"] = "invalid_entity"
             else:
                 key = _make_key(name)
                 if any(p["key"] == key for p in self._participants):
@@ -205,7 +215,7 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
             step_id="add_participant",
             data_schema=vol.Schema({
                 vol.Required("participant_name"): str,
-                vol.Required("step_entity"): str,
+                vol.Required("step_entity"): _STEP_ENTITY_SELECTOR,
             }),
             description_placeholders={"current_participants": current},
             errors=errors,
@@ -217,7 +227,7 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                 return await self.async_step_add_participant()
             return self._save()
 
-        last = self._participants[-1]["name"] if self._participants else ""
+        last    = self._participants[-1]["name"] if self._participants else ""
         current = ", ".join(p["name"] for p in self._participants)
         return self.async_show_form(
             step_id="add_another",
@@ -228,7 +238,7 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                 }),
             }),
             description_placeholders={
-                "last_added": last,
+                "last_added":           last,
                 "current_participants": current,
             },
         )
@@ -239,10 +249,10 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
         if not self._participants:
             return await self.async_step_init()
 
-        errors: dict = {}
         if user_input is not None:
             self._participants = [
-                p for p in self._participants if p["key"] != user_input["participant_key"]
+                p for p in self._participants
+                if p["key"] != user_input["participant_key"]
             ]
             return await self.async_step_remove_another()
 
@@ -253,7 +263,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                 vol.Required("participant_key"): vol.In(choices),
             }),
             description_placeholders={"count": str(len(self._participants))},
-            errors=errors,
         )
 
     async def async_step_remove_another(self, user_input=None) -> FlowResult:
@@ -278,28 +287,31 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
 
     async def async_step_settings(self, user_input=None) -> FlowResult:
         if user_input is not None:
-            self._name = user_input[CONF_CHALLENGE_NAME].strip()
-            self._duration = int(user_input[CONF_DURATION_DAYS])
+            self._name        = user_input[CONF_CHALLENGE_NAME].strip()
+            self._duration    = int(user_input[CONF_DURATION_DAYS])
+            self._record_time = user_input[CONF_RECORD_TIME]
             return self._save()
 
         return self.async_show_form(
             step_id="settings",
             data_schema=vol.Schema({
                 vol.Required(CONF_CHALLENGE_NAME, default=self._name): str,
-                vol.Required(CONF_DURATION_DAYS, default=self._duration): vol.All(
+                vol.Required(CONF_DURATION_DAYS,  default=self._duration): vol.All(
                     int, vol.Range(min=7, max=365)
                 ),
+                vol.Required(CONF_RECORD_TIME, default=self._record_time): _TIME_SELECTOR,
             }),
         )
 
-    # ── Persist ───────────────────────────────────────────────────────────────
+    # ── Save ──────────────────────────────────────────────────────────────────
 
     def _save(self) -> FlowResult:
         return self.async_create_entry(
             title=self._name,
             data={
                 CONF_CHALLENGE_NAME: self._name,
-                CONF_DURATION_DAYS: self._duration,
-                CONF_PARTICIPANTS: self._participants,
+                CONF_DURATION_DAYS:  self._duration,
+                CONF_RECORD_TIME:    self._record_time,
+                CONF_PARTICIPANTS:   self._participants,
             },
         )

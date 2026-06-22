@@ -3,18 +3,25 @@
     "step": {
       "user": {
         "title": "Schritt-Challenge",
-        "description": "Richte deine Schritt-Challenge ein. Teilnehmer fügst du in den nächsten Schritten hinzu.\n\nDie Integration erstellt automatisch eine tägliche Automation und ein Rennpanel in der Seitenleiste.",
+        "description": "Richte deine Schritt-Challenge ein. Teilnehmer fügst du in den nächsten Schritten hinzu.\n\nDie Integration erstellt automatisch eine Automation und ein Rennpanel in der Seitenleiste.",
         "data": {
           "challenge_name": "Challenge-Name",
-          "duration_days": "Dauer (Tage, 7–365)"
+          "duration_days": "Dauer (Tage, 7–365)",
+          "record_time": "Auswertungszeit (täglich)"
+        },
+        "data_description": {
+          "record_time": "Uhrzeit, zu der täglich der Tagessieger ermittelt wird. Wähle eine Zeit, zu der alle Geräte ihre Schritte synchronisiert haben – empfohlen: 22:00–23:00 Uhr."
         }
       },
       "add_participant": {
         "title": "Teilnehmer hinzufügen",
-        "description": "Bisher hinzugefügt ({count}): {current_participants}\n\nName und Schritt-Sensor-Entity des nächsten Teilnehmers eingeben.",
+        "description": "Bisher hinzugefügt ({count}): {current_participants}",
         "data": {
           "participant_name": "Name",
-          "step_entity": "Schritt-Sensor (z. B. sensor.alice_daily_steps)"
+          "step_entity": "Schritt-Sensor"
+        },
+        "data_description": {
+          "step_entity": "Wähle den Sensor aus der Liste. Es werden nur Sensoren angezeigt, deren Entity-ID 'daily_steps' enthält."
         }
       },
       "add_more": {
@@ -38,7 +45,7 @@
     "step": {
       "init": {
         "title": "Schritt-Challenge Optionen",
-        "description": "**{challenge_name}** · {duration} Tage · {count} Teilnehmer: {participants}",
+        "description": "**{challenge_name}** · {duration} Tage · Auswertung: {record_time}\nTeilnehmer ({count}): {participants}",
         "data": {
           "action": "Was möchtest du tun?"
         }
@@ -48,7 +55,10 @@
         "description": "Aktuelle Teilnehmer: {current_participants}",
         "data": {
           "participant_name": "Name",
-          "step_entity": "Schritt-Sensor (z. B. sensor.alice_daily_steps)"
+          "step_entity": "Schritt-Sensor"
+        },
+        "data_description": {
+          "step_entity": "Wähle den Sensor aus der Liste. Es werden nur Sensoren angezeigt, deren Entity-ID 'daily_steps' enthält."
         }
       },
       "add_another": {
@@ -74,10 +84,14 @@
       },
       "settings": {
         "title": "Challenge-Einstellungen",
-        "description": "Name und Dauer ändern. Eine laufende Challenge wird erst nach Neustart beeinflusst.",
+        "description": "Name, Dauer und Auswertungszeit ändern. Eine laufende Challenge wird erst nach Neustart beeinflusst.",
         "data": {
           "challenge_name": "Challenge-Name",
-          "duration_days": "Dauer (Tage, 7–365)"
+          "duration_days": "Dauer (Tage, 7–365)",
+          "record_time": "Auswertungszeit (täglich)"
+        },
+        "data_description": {
+          "record_time": "Uhrzeit, zu der täglich der Tagessieger ermittelt wird."
         }
       }
     },

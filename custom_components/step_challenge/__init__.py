@@ -14,6 +14,8 @@ from homeassistant.util.dt import now as ha_now
 from .automation_manager import async_ensure_automation, async_remove_automation
 from .const import (
     CONF_PARTICIPANTS,
+    CONF_RECORD_TIME,
+    DEFAULT_RECORD_TIME,
     DOMAIN,
     PLATFORMS,
     SERVICE_RECORD_DAY,
@@ -24,7 +26,6 @@ from .storage import ChallengeStore
 
 _LOGGER = logging.getLogger(__name__)
 
-# Read version once at import time (no blocking in event loop)
 try:
     import json as _json
     _VERSION = _json.loads(
@@ -42,13 +43,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {"store": store, "entry": entry}
 
-    # Forward to sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Copy www files to /config/www/step_challenge/
     await hass.async_add_executor_job(_provision_www, hass)
 
-    # Register sidebar panel (direct call – no event listener needed)
     try:
         async_register_built_in_panel(
             hass,
@@ -60,13 +57,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             require_admin=False,
         )
     except Exception:  # noqa: BLE001
-        pass  # Panel already registered after reload – not an error
+        pass
 
-    # Register services (once per domain)
     _register_services(hass, entry)
 
-    # Create daily automation
-    await async_ensure_automation(hass)
+    record_time = entry.options.get(
+        CONF_RECORD_TIME,
+        entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME),
+    )
+    await async_ensure_automation(hass, record_time)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
@@ -77,7 +76,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-        # Remove panel and automation only when last entry is gone
         if not hass.data[DOMAIN]:
             try:
                 hass.components.frontend.async_remove_panel(DOMAIN)
@@ -92,7 +90,6 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 def _provision_www(hass: HomeAssistant) -> None:
-    """Copy integration www/ files to /config/www/step_challenge/."""
     src_dir = Path(__file__).parent / "www"
     dst_dir = Path(hass.config.path("www", DOMAIN))
     dst_dir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +101,6 @@ def _provision_www(hass: HomeAssistant) -> None:
 # ── Services ──────────────────────────────────────────────────────────────────
 
 def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Register integration-level services (once per domain)."""
 
     def _store(entry_id: str) -> ChallengeStore:
         return hass.data[DOMAIN][entry_id]["store"]
@@ -115,8 +111,8 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     async def _start(call: ServiceCall) -> None:
         for entry_id in hass.data[DOMAIN]:
-            store = _store(entry_id)
-            parts = _participants(entry_id)
+            store  = _store(entry_id)
+            parts  = _participants(entry_id)
             store.reset(
                 participant_keys=[p["key"] for p in parts],
                 start_iso=ha_now().isoformat(),
@@ -127,9 +123,8 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     async def _stop(call: ServiceCall) -> None:
         for entry_id in hass.data[DOMAIN]:
-            store = _store(entry_id)
-            store.stop()
-            await store.async_save()
+            _store(entry_id).stop()
+            await _store(entry_id).async_save()
         hass.bus.async_fire(f"{DOMAIN}_stopped")
         _LOGGER.info("Step Challenge stopped")
 
@@ -140,7 +135,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 _LOGGER.debug("Step Challenge: not active, skipping record_day")
                 continue
 
-            parts = _participants(entry_id)
+            parts  = _participants(entry_id)
             steps: dict[str, int] = {}
             for p in parts:
                 state = hass.states.get(p["entity"])
@@ -157,7 +152,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 _LOGGER.warning("Step Challenge: no valid step data for record_day")
                 continue
 
-            winner_key = max(steps, key=lambda k: steps[k])
+            winner_key  = max(steps, key=lambda k: steps[k])
             winner_name = next(
                 (p["name"] for p in parts if p["key"] == winner_key), winner_key
             )
@@ -168,14 +163,9 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
             hass.bus.async_fire(
                 f"{DOMAIN}_stage_won",
-                {
-                    "winner": winner_key,
-                    "winner_name": winner_name,
-                    "steps": steps,
-                    "date": date_str,
-                },
+                {"winner": winner_key, "winner_name": winner_name,
+                 "steps": steps, "date": date_str},
             )
-
             hass.components.persistent_notification.async_create(
                 title="Step Challenge",
                 message=(
@@ -186,8 +176,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             )
             _LOGGER.info(
                 "Step Challenge stage winner: %s (%s steps)",
-                winner_name,
-                steps[winner_key],
+                winner_name, steps[winner_key],
             )
 
         hass.bus.async_fire(f"{DOMAIN}_data_updated")

@@ -6,15 +6,22 @@
         "description": "Set up your Step Challenge. You will add participants in the next steps.\n\nThe integration automatically creates a daily automation and a race panel in the sidebar.",
         "data": {
           "challenge_name": "Challenge name",
-          "duration_days": "Duration (days, 7–365)"
+          "duration_days": "Duration (days, 7–365)",
+          "record_time": "Daily evaluation time"
+        },
+        "data_description": {
+          "record_time": "Time at which the daily stage winner is determined. Choose a time when all devices have finished syncing their steps – recommended: 22:00–23:00."
         }
       },
       "add_participant": {
         "title": "Add Participant",
-        "description": "Participants added so far ({count}): {current_participants}\n\nEnter the name and step sensor entity ID of the next participant.",
+        "description": "Participants added so far ({count}): {current_participants}",
         "data": {
           "participant_name": "Name",
-          "step_entity": "Step sensor entity (e.g. sensor.alice_daily_steps)"
+          "step_entity": "Step sensor"
+        },
+        "data_description": {
+          "step_entity": "Select from the list. Only sensors whose entity ID contains 'daily_steps' are shown."
         }
       },
       "add_more": {
@@ -38,7 +45,7 @@
     "step": {
       "init": {
         "title": "Step Challenge Options",
-        "description": "**{challenge_name}** · {duration} days · {count} participants: {participants}",
+        "description": "**{challenge_name}** · {duration} days · Evaluation: {record_time}\nParticipants ({count}): {participants}",
         "data": {
           "action": "What would you like to do?"
         }
@@ -48,7 +55,10 @@
         "description": "Current participants: {current_participants}",
         "data": {
           "participant_name": "Name",
-          "step_entity": "Step sensor entity (e.g. sensor.alice_daily_steps)"
+          "step_entity": "Step sensor"
+        },
+        "data_description": {
+          "step_entity": "Select from the list. Only sensors whose entity ID contains 'daily_steps' are shown."
         }
       },
       "add_another": {
@@ -74,10 +84,14 @@
       },
       "settings": {
         "title": "Challenge Settings",
-        "description": "Change name and duration. A running challenge is not affected until restarted.",
+        "description": "Change name, duration and evaluation time. A running challenge is not affected until restarted.",
         "data": {
           "challenge_name": "Challenge name",
-          "duration_days": "Duration (days, 7–365)"
+          "duration_days": "Duration (days, 7–365)",
+          "record_time": "Daily evaluation time"
+        },
+        "data_description": {
+          "record_time": "Time at which the daily stage winner is determined."
         }
       }
     },
