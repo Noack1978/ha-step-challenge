@@ -18,9 +18,6 @@ SERVICE_START      = "start"
 SERVICE_STOP       = "stop"
 SERVICE_RECORD_DAY = "record_day"
 
-# Automation managed by the integration
-MANAGED_AUTOMATION_ID = f"{DOMAIN}_daily_stage"
-
 # Defaults
 DEFAULT_CHALLENGE_NAME = "Step Challenge"
 DEFAULT_DURATION_DAYS  = 30

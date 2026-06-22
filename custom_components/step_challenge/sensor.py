@@ -23,13 +23,14 @@ async def async_setup_entry(
     participants = entry.options.get(
         CONF_PARTICIPANTS, entry.data.get(CONF_PARTICIPANTS, [])
     )
-    entities: list[SensorEntity] = [
-        StageWinSensor(hass, entry, p) for p in participants
-    ] + [
-        DaysElapsedSensor(hass, entry),
-        ChallengeStatusSensor(hass, entry),
-        LeaderSensor(hass, entry, participants),
-    ]
+    entities: list[SensorEntity] = (
+        [StageWinSensor(hass, entry, p) for p in participants]
+        + [
+            DaysElapsedSensor(hass, entry),
+            ChallengeStatusSensor(hass, entry),
+            LeaderSensor(hass, entry, participants),
+        ]
+    )
     async_add_entities(entities, True)
 
 
@@ -48,7 +49,7 @@ class _Base(SensorEntity):
         return self.hass.data[DOMAIN][self._entry.entry_id]["store"]
 
     @property
-    def device_info(self):
+    def device_info(self) -> dict:
         name = self._entry.options.get(
             CONF_CHALLENGE_NAME,
             self._entry.data.get(CONF_CHALLENGE_NAME, "Step Challenge"),
@@ -78,13 +79,14 @@ class _Base(SensorEntity):
 # ── Stage wins per participant ────────────────────────────────────────────────
 
 class StageWinSensor(_Base):
-    def __init__(self, hass, entry, participant: dict) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, participant: dict) -> None:
         super().__init__(hass, entry)
         self._p = participant
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_stages_{participant['key']}"
         self._attr_name = f"{participant['name']} Stage Wins"
         self._attr_icon = "mdi:podium-gold"
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        # MEASUREMENT because scores can be reset when a new challenge starts
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "stages"
 
     @property
@@ -104,7 +106,7 @@ class StageWinSensor(_Base):
 # ── Days elapsed ──────────────────────────────────────────────────────────────
 
 class DaysElapsedSensor(_Base):
-    def __init__(self, hass, entry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(hass, entry)
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_days_elapsed"
         self._attr_name = "Days Elapsed"
@@ -146,7 +148,7 @@ class DaysElapsedSensor(_Base):
 # ── Status ────────────────────────────────────────────────────────────────────
 
 class ChallengeStatusSensor(_Base):
-    def __init__(self, hass, entry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(hass, entry)
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_status"
         self._attr_name = "Status"
@@ -180,7 +182,7 @@ class ChallengeStatusSensor(_Base):
 # ── Leader ────────────────────────────────────────────────────────────────────
 
 class LeaderSensor(_Base):
-    def __init__(self, hass, entry, participants: list[dict]) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, participants: list[dict]) -> None:
         super().__init__(hass, entry)
         self._participants = participants
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_leader"
@@ -200,8 +202,5 @@ class LeaderSensor(_Base):
     def extra_state_attributes(self) -> dict:
         scores = self._store.scores
         return {
-            "scores": {
-                p["name"]: scores.get(p["key"], 0)
-                for p in self._participants
-            }
+            "scores": {p["name"]: scores.get(p["key"], 0) for p in self._participants}
         }

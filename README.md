@@ -46,9 +46,10 @@
 4. Bei Aufforderung neu starten
 
 Die Integration richtet automatisch ein:
-- Eine tägliche Automation, die um 00:01 Uhr den Etappensieger ermittelt
 - Das Rennpanel unter `http://deine-ha-ip/local/step_challenge/index.html`
 - Sensoren für jeden Teilnehmer und die Challenge insgesamt
+
+Nach der Einrichtung erscheint eine Benachrichtigung in HA mit dem Link zum Blueprint für die tägliche Auswertung. Den Blueprint einmalig importieren unter *Einstellungen → Automationen → Blueprints → Blueprint importieren*.
 
 ### Teilnehmer verwalten
 
@@ -135,9 +136,10 @@ tap_action:
 4. Restart if prompted
 
 The integration automatically:
-- Creates a daily automation that records the stage winner at 00:01
 - Makes the race panel available at `http://your-ha-ip/local/step_challenge/index.html`
 - Creates sensors for each participant and the overall challenge
+
+After setup, a notification appears in HA with a link to the daily evaluation blueprint. Import it once via *Settings → Automations → Blueprints → Import Blueprint*.
 
 ### Managing participants
 

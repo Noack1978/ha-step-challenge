@@ -7,11 +7,11 @@ from datetime import datetime
 from pathlib import Path
 
 from homeassistant.components.frontend import async_register_built_in_panel
+from homeassistant.components.persistent_notification import async_create as pn_create
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.util.dt import now as ha_now
 
-from .automation_manager import async_ensure_automation, async_remove_automation
 from .const import (
     CONF_PARTICIPANTS,
     CONF_RECORD_TIME,
@@ -41,11 +41,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await store.async_load()
 
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"store": store, "entry": entry}
+    hass.data[DOMAIN][entry.entry_id] = {"store": store}
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await hass.async_add_executor_job(_provision_www, hass)
 
+    # Register sidebar panel – wrapped in try/except for reload safety
     try:
         async_register_built_in_panel(
             hass,
@@ -57,17 +58,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             require_admin=False,
         )
     except Exception:  # noqa: BLE001
-        pass
+        pass  # Already registered after reload
 
     _register_services(hass, entry)
 
+    # Notify user to set up the daily automation via blueprint
     record_time = entry.options.get(
         CONF_RECORD_TIME,
         entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME),
     )
-    await async_ensure_automation(hass, record_time)
+    pn_create(
+        hass,
+        title="Step Challenge",
+        message=(
+            f"✅ Step Challenge is ready!\n\n"
+            f"**Next step:** Import the blueprint to record daily stage winners "
+            f"automatically at **{record_time}**.\n\n"
+            f"Go to *Settings → Automations → Blueprints → Import Blueprint* and use:\n"
+            f"`https://github.com/Noack1978/ha-step-challenge/blob/main/"
+            f"blueprints/automation/step_challenge/daily_stage.yaml`"
+        ),
+        notification_id=f"{DOMAIN}_setup_hint",
+    )
 
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
 
@@ -77,19 +90,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
+            from homeassistant.components.frontend import async_remove_panel
             try:
-                hass.components.frontend.async_remove_panel(DOMAIN)
+                async_remove_panel(hass, DOMAIN)
             except Exception:  # noqa: BLE001
                 pass
-            await async_remove_automation(hass)
     return unload_ok
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
-
-
 def _provision_www(hass: HomeAssistant) -> None:
+    """Copy www files to /config/www/step_challenge/ (runs in executor)."""
     src_dir = Path(__file__).parent / "www"
     dst_dir = Path(hass.config.path("www", DOMAIN))
     dst_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +111,7 @@ def _provision_www(hass: HomeAssistant) -> None:
 # ── Services ──────────────────────────────────────────────────────────────────
 
 def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register services – guarded against duplicate registration on reload."""
 
     def _store(entry_id: str) -> ChallengeStore:
         return hass.data[DOMAIN][entry_id]["store"]
@@ -110,9 +121,9 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         return e.options.get(CONF_PARTICIPANTS, e.data.get(CONF_PARTICIPANTS, []))
 
     async def _start(call: ServiceCall) -> None:
-        for entry_id in hass.data[DOMAIN]:
-            store  = _store(entry_id)
-            parts  = _participants(entry_id)
+        for entry_id in list(hass.data[DOMAIN]):
+            store = _store(entry_id)
+            parts = _participants(entry_id)
             store.reset(
                 participant_keys=[p["key"] for p in parts],
                 start_iso=ha_now().isoformat(),
@@ -122,20 +133,21 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _LOGGER.info("Step Challenge started")
 
     async def _stop(call: ServiceCall) -> None:
-        for entry_id in hass.data[DOMAIN]:
-            _store(entry_id).stop()
-            await _store(entry_id).async_save()
+        for entry_id in list(hass.data[DOMAIN]):
+            store = _store(entry_id)
+            store.stop()
+            await store.async_save()
         hass.bus.async_fire(f"{DOMAIN}_stopped")
         _LOGGER.info("Step Challenge stopped")
 
     async def _record_day(call: ServiceCall) -> None:
-        for entry_id in hass.data[DOMAIN]:
+        for entry_id in list(hass.data[DOMAIN]):
             store = _store(entry_id)
             if not store.active:
                 _LOGGER.debug("Step Challenge: not active, skipping record_day")
                 continue
 
-            parts  = _participants(entry_id)
+            parts = _participants(entry_id)
             steps: dict[str, int] = {}
             for p in parts:
                 state = hass.states.get(p["entity"])
@@ -152,7 +164,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 _LOGGER.warning("Step Challenge: no valid step data for record_day")
                 continue
 
-            winner_key  = max(steps, key=lambda k: steps[k])
+            winner_key = max(steps, key=lambda k: steps[k])
             winner_name = next(
                 (p["name"] for p in parts if p["key"] == winner_key), winner_key
             )
@@ -166,18 +178,14 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 {"winner": winner_key, "winner_name": winner_name,
                  "steps": steps, "date": date_str},
             )
-            hass.components.persistent_notification.async_create(
+            pn_create(
+                hass,
                 title="Step Challenge",
-                message=(
-                    f"🏆 {winner_name} wins today's stage "
-                    f"with {steps[winner_key]:,} steps!"
-                ),
+                message=f"🏆 {winner_name} wins today's stage with {steps[winner_key]:,} steps!",
                 notification_id=f"{DOMAIN}_stage_{date_str}",
             )
-            _LOGGER.info(
-                "Step Challenge stage winner: %s (%s steps)",
-                winner_name, steps[winner_key],
-            )
+            _LOGGER.info("Step Challenge stage winner: %s (%s steps)",
+                         winner_name, steps[winner_key])
 
         hass.bus.async_fire(f"{DOMAIN}_data_updated")
 
