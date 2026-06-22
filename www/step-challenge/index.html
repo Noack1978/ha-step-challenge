@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Step Challenge</title>
+<style>
+  :root {
+    --bg: #0f0f1a; --surface: #1a1a2e; --track: #12122a;
+    --accent: #e94560; --gold: #ffd700; --silver: #c0c0c0;
+    --bronze: #cd7f32; --blue: #5b8de8; --green: #0ead69;
+    --text: #e8e8f0; --muted: #6b6b8a; --r: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  .header { background: linear-gradient(135deg,#0f0f1a,#1a1a2e); padding: 14px 18px 12px;
+    border-bottom: 2px solid var(--accent); display: flex; align-items: center; gap: 12px; }
+  .header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: .05em; }
+  .header .sub { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+  .header-left { flex: 1; }
+  .badge { padding: 3px 10px; border-radius: 20px; font-size: .68rem; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase; }
+  .badge-active   { background:#0ead6922; color:var(--green);  border:1px solid var(--green); }
+  .badge-inactive { background:#e9456022; color:var(--accent); border:1px solid var(--accent); }
+  .badge-finished { background:#ffd70022; color:var(--gold);   border:1px solid var(--gold); }
+
+  .progress-wrap { background: var(--surface); padding: 12px 18px; border-bottom: 1px solid #ffffff10; }
+  .progress-meta { display: flex; justify-content: space-between; font-size: .72rem; color: var(--muted); margin-bottom: 7px; }
+  .progress-meta b { color: var(--text); }
+  .progress-bg { height: 8px; background: #ffffff10; border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg,var(--accent),var(--gold));
+    border-radius: 4px; transition: width 1s ease; }
+
+  .winner-banner { margin: 14px 16px 0; background: #ffd70015; border: 1px solid var(--gold);
+    border-radius: var(--r); padding: 14px; text-align: center; animation: pulse 2s infinite; }
+  .winner-banner h2 { font-size: 1.2rem; color: var(--gold); }
+  .winner-banner p  { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(255,215,0,.3);} 50%{box-shadow:0 0 0 8px rgba(255,215,0,0);} }
+
+  .section { padding: 14px 16px 6px; }
+  .section-label { font-size: .62rem; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+
+  .lane { background: var(--track); border-radius: var(--r); border: 1px solid #ffffff08; margin-bottom: 9px; overflow: hidden; }
+  .lane-inner { padding: 9px 12px; display: flex; align-items: center; gap: 9px; }
+  .lane-rank   { font-size: 1.1rem; width: 26px; text-align: center; flex-shrink: 0; }
+  .lane-avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 1rem; flex-shrink: 0; border: 2px solid transparent; }
+  .lane-info   { flex: 1; min-width: 0; }
+  .lane-name   { font-size: .88rem; font-weight: 600; }
+  .lane-steps  { font-size: .68rem; color: var(--muted); margin-top: 2px; }
+  .lane-steps b { color: var(--gold); }
+  .lane-bar-wrap { flex: 2; min-width: 0; }
+  .lane-bar-bg   { height: 13px; background: #ffffff08; border-radius: 7px; overflow: hidden; position: relative; }
+  .lane-bar-fill { height: 100%; border-radius: 7px; transition: width 1.2s cubic-bezier(.34,1.56,.64,1); position: relative; }
+  .lane-bar-fill::after { content:''; position:absolute; right:0; top:0; height:100%; width:18px;
+    background:rgba(255,255,255,.2); border-radius:7px; animation:shimmer 1.5s infinite; }
+  @keyframes shimmer { 0%,100%{opacity:.3;} 50%{opacity:.8;} }
+  .lane-figure { font-size:1.3rem; position:absolute; right:-2px; top:-3px;
+    transition:all 1.2s cubic-bezier(.34,1.56,.64,1);
+    filter:drop-shadow(0 0 4px rgba(255,215,0,.5)); animation:bounce .8s infinite alternate; }
+  @keyframes bounce { from{transform:translateY(0);} to{transform:translateY(-3px);} }
+  .lane-score  { font-size: 1.05rem; font-weight: 800; min-width: 32px; text-align: right; flex-shrink: 0; }
+
+  .cal-grid { display: flex; flex-wrap: wrap; gap: 3px; }
+  .cal-day { width:26px; height:26px; border-radius:5px; display:flex; align-items:center;
+    justify-content:center; font-size:.58rem; font-weight:700; border:1px solid #ffffff10;
+    background:#ffffff05; color:var(--muted); position:relative; cursor:default; transition:transform .2s; }
+  .cal-day:hover { transform:scale(1.25); z-index:1; }
+  .cal-day.today  { border-color:var(--accent); color:var(--accent); }
+  .cal-day.future { opacity:.3; }
+  .cal-day .dot { position:absolute; bottom:2px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:50%; }
+  .cal-legend { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
+  .cal-legend-item { display:flex; align-items:center; gap:4px; font-size:.68rem; color:var(--muted); }
+  .cal-legend-dot { width:9px; height:9px; border-radius:50%; }
+
+  table { width:100%; border-collapse:collapse; font-size:.78rem; }
+  th { text-align:left; color:var(--muted); font-weight:600; padding:5px 7px;
+       border-bottom:1px solid #ffffff10; font-size:.67rem; }
+  td { padding:6px 7px; border-bottom:1px solid #ffffff06; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#ffffff05; }
+
+  .empty { display:flex; align-items:center; justify-content:center; min-height:55vh;
+    flex-direction:column; gap:12px; padding:40px 20px; text-align:center; }
+  .empty .icon { font-size:3.5rem; }
+  .empty h2 { color:var(--muted); font-size:1.1rem; }
+  .empty p  { color:var(--muted); font-size:.82rem; max-width:280px; }
+
+  .spinner-wrap { display:flex; align-items:center; justify-content:center; height:100vh;
+    gap:14px; flex-direction:column; color:var(--muted); }
+  .spinner { width:34px; height:34px; border:3px solid #ffffff10; border-top-color:var(--accent);
+    border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg);} }
+
+  @media (max-width:460px) { .lane-bar-wrap { display:none; } }
+</style>
+</head>
+<body>
+<div id="app"><div class="spinner-wrap"><div class="spinner"></div><span>Connecting…</span></div></div>
+<script>
+// Per-rank visual config – cycles for unlimited participants
+const RANK_COLORS  = ['#ffd700','#c0c0c0','#cd7f32','#5b8de8','#0ead69','#e94560','#b06cff','#ff9800'];
+const RANK_FIGURES = ['🚀','🌟','💫','⚡','🔥','🎯','🏅','💎'];
+const RANK_MEDALS  = ['🥇','🥈','🥉'];
+const RANK_AVATAR_BG = ['#ffd70018','#c0c0c018','#cd7f3218','#5b8de818','#0ead6918','#e9456018','#b06cff18','#ff980018'];
+
+let ws, msgId=1, pending={}, haStates={}, storeData={};
+
+function connect() {
+  const proto = location.protocol==='https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/api/websocket`);
+  ws.onclose   = () => setTimeout(connect, 3000);
+  ws.onmessage = e => onMsg(JSON.parse(e.data));
+}
+
+function send(msg) {
+  return new Promise((res,rej) => { const id=msgId++; msg.id=id; pending[id]={res,rej}; ws.send(JSON.stringify(msg)); });
+}
+
+async function onMsg(msg) {
+  if (msg.type==='auth_required') { ws.send(JSON.stringify({type:'auth', access_token: await getToken()})); return; }
+  if (msg.type==='auth_ok') { await init(); return; }
+  if (msg.type==='result' && pending[msg.id]) {
+    msg.success ? pending[msg.id].res(msg.result) : pending[msg.id].rej(msg.error);
+    delete pending[msg.id]; return;
+  }
+  if (msg.type==='event') {
+    const et = msg.event?.event_type;
+    if (et==='state_changed') {
+      const s=msg.event.data.new_state; if(s) { haStates[s.entity_id]=s; scheduleRender(); }
+    }
+    if (['step_challenge_stage_won','step_challenge_started','step_challenge_stopped'].includes(et)) {
+      await loadStore(); scheduleRender();
+    }
+  }
+}
+
+async function getToken() {
+  const p=new URLSearchParams(location.search); if(p.get('token')) return p.get('token');
+  return localStorage.getItem('ha_access_token')||'';
+}
+
+async function init() {
+  const all = await send({type:'get_states'});
+  all.forEach(s => { haStates[s.entity_id]=s; });
+  await loadStore();
+  await send({type:'subscribe_events', event_type:'state_changed'});
+  await send({type:'subscribe_events', event_type:'step_challenge_stage_won'});
+  await send({type:'subscribe_events', event_type:'step_challenge_started'});
+  await send({type:'subscribe_events', event_type:'step_challenge_stopped'});
+  render();
+}
+
+async function loadStore() {
+  try {
+    const tok=await getToken();
+    const r=await fetch(`${location.origin}/api/storage/step_challenge_data`,
+      {headers:{Authorization:`Bearer ${tok}`}});
+    if(r.ok) storeData=await r.json(); else storeData={};
+  } catch(e) { storeData={}; }
+}
+
+// ── State helpers ─────────────────────────────────────────────────────────────
+function st(id)    { return haStates[id]?.state||'unknown'; }
+function stNum(id) { const v=parseFloat(st(id)); return isNaN(v)?0:v; }
+
+function findEnt(substr) {
+  return Object.values(haStates).find(s => s.entity_id.includes('step_challenge') && s.entity_id.includes(substr));
+}
+
+function getStatus()   { return findEnt('_status')?.state||'inactive'; }
+function getElapsed()  { return parseInt(findEnt('days_elapsed')?.state)||0; }
+function getTotal()    { return parseInt(findEnt('days_elapsed')?.attributes?.duration_days)||30; }
+function getProgress() { return parseInt(findEnt('days_elapsed')?.attributes?.progress_pct)||0; }
+
+function getName() {
+  const s=findEnt('_status'); if(!s) return 'Step Challenge';
+  return (s.attributes?.friendly_name||'Step Challenge').replace(/\s*Status$/i,'');
+}
+
+function getParticipants() {
+  // Collect all stage_win sensors for this integration
+  const sensors = Object.values(haStates).filter(s =>
+    s.entity_id.includes('step_challenge') && s.entity_id.includes('stage')
+  );
+  if (!sensors.length) {
+    // Fallback: read from leader sensor attributes
+    const leader = findEnt('leader');
+    if (!leader?.attributes?.scores) return [];
+    return Object.entries(leader.attributes.scores).map(([name,score])=>({name,score,steps:0,stepEntity:null}));
+  }
+  return sensors.map(s => ({
+    name:  (s.attributes?.friendly_name||s.entity_id).replace(/\s*Stage\s*Wins?$/i,'').trim(),
+    score: parseInt(s.state)||0,
+    steps: stNum(s.attributes?.step_entity||''),
+    stepEntity: s.attributes?.step_entity||null,
+    wonDates: s.attributes?.won_dates||[],
+    key: s.attributes?.participant_key||null,
+  }));
+}
+
+function fmt(n) { return Number(n).toLocaleString('de-DE'); }
+function fmtDate(iso) {
+  if(!iso) return '—';
+  return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+let rTimer=null;
+function scheduleRender() { if(rTimer) return; rTimer=setTimeout(()=>{rTimer=null;render();},400); }
+
+function render() {
+  const status  = getStatus();
+  const elapsed = getElapsed();
+  const total   = getTotal();
+  const pct     = getProgress();
+  const name    = getName();
+  const badgeCls= status==='active'?'badge-active':status==='finished'?'badge-finished':'badge-inactive';
+  const badgeTxt= status==='active'?'Running':status==='finished'?'Finished':'Inactive';
+
+  let html = `<div class="header">
+    <div class="header-left"><h1>🏁 ${name}</h1><div class="sub">Day ${elapsed} of ${total}</div></div>
+    <div class="badge ${badgeCls}">${badgeTxt}</div>
+  </div>
+  <div class="progress-wrap">
+    <div class="progress-meta"><span>Progress</span><b>${pct}%</b></div>
+    <div class="progress-bg"><div class="progress-fill" style="width:${pct}%"></div></div>
+  </div>`;
+
+  if (status==='inactive') {
+    html+=`<div class="empty"><div class="icon">🏃</div><h2>No challenge active</h2>
+      <p>Start a challenge via the dashboard to begin the race.</p></div>`;
+    document.getElementById('app').innerHTML=html; return;
+  }
+
+  const parts = getParticipants().sort((a,b)=>b.score-a.score||b.steps-a.steps);
+
+  if (!parts.length) {
+    html+=`<div class="empty"><div class="icon">⚙️</div><h2>Loading…</h2></div>`;
+    document.getElementById('app').innerHTML=html; return;
+  }
+
+  // Winner banner
+  if (status==='finished') {
+    const w=parts[0];
+    html+=`<div class="winner-banner"><h2>🏆 ${w.name} wins!</h2><p>${w.score} of ${total} stages won</p></div>`;
+  }
+
+  // Race
+  const maxScore=Math.max(...parts.map(p=>p.score),1);
+  html+=`<div class="section"><div class="section-label">🏎 Race – Stage Wins</div>`;
+  parts.forEach((p,i)=>{
+    const color  = RANK_COLORS[i%RANK_COLORS.length];
+    const fig    = RANK_FIGURES[i%RANK_FIGURES.length];
+    const medal  = RANK_MEDALS[i]||(i+1)+'.';
+    const barPct = Math.max(4, Math.round((p.score/maxScore)*100));
+    const avatarBg = RANK_AVATAR_BG[i%RANK_AVATAR_BG.length];
+    html+=`<div class="lane">
+      <div class="lane-inner">
+        <div class="lane-rank">${medal}</div>
+        <div class="lane-avatar" style="border-color:${color};background:${avatarBg}">🏃</div>
+        <div class="lane-info">
+          <div class="lane-name" style="color:${color}">${p.name}</div>
+          <div class="lane-steps">Today: <b>${fmt(p.steps)}</b> steps</div>
+        </div>
+        <div class="lane-bar-wrap">
+          <div class="lane-bar-bg">
+            <div class="lane-bar-fill" data-pct="${barPct}" style="width:4%;background:linear-gradient(90deg,${color}88,${color})">
+              <span class="lane-figure">${fig}</span>
+            </div>
+          </div>
+        </div>
+        <div class="lane-score" style="color:${color}">${p.score}</div>
+      </div>
+    </div>`;
+  });
+  html+=`</div>`;
+
+  // Calendar
+  const history=storeData?.history||[];
+  if (elapsed>0) html+=renderCalendar(elapsed,total,parts,history,storeData?.start);
+
+  // Table
+  if (history.length>0) html+=renderTable(history.slice(-7).reverse(),parts);
+
+  document.getElementById('app').innerHTML=html;
+
+  // Animate bars
+  setTimeout(()=>{
+    document.querySelectorAll('.lane-bar-fill[data-pct]').forEach(el=>{
+      const w=el.dataset.pct+'%'; el.style.width='0%';
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{el.style.width=w;}));
+    });
+  },60);
+}
+
+function renderCalendar(elapsed,total,parts,history,startIso) {
+  const startDt=startIso?new Date(startIso):null;
+  const today=new Date(); today.setHours(0,0,0,0);
+
+  // Build key→color map
+  const colorByKey={};
+  parts.forEach((p,i)=>{
+    if(p.key) colorByKey[p.key]=RANK_COLORS[i%RANK_COLORS.length];
+    colorByKey[p.name.toLowerCase().replace(/\s+/g,'_')]=RANK_COLORS[i%RANK_COLORS.length];
+  });
+
+  let html=`<div class="section"><div class="section-label">📅 Stage Calendar</div><div class="cal-grid">`;
+  for(let d=0;d<total;d++){
+    let dayDt=startDt?new Date(startDt.getTime()+d*86400000):null;
+    if(dayDt) dayDt.setHours(0,0,0,0);
+    const isToday=dayDt&&dayDt.getTime()===today.getTime();
+    const isFuture=dayDt?dayDt>today:d>=elapsed;
+    const entry=history.find(h=>{
+      if(!startDt) return false;
+      const hd=new Date(h.date); hd.setHours(0,0,0,0);
+      return Math.round((hd-startDt)/86400000)===d;
+    });
+    const w=entry?.winner; const wc=w?(colorByKey[w]||'#888'):null;
+    let cls='cal-day'; if(isToday) cls+=' today'; if(isFuture) cls+=' future';
+    const bg=wc?`background:${wc}18;border-color:${wc}55;`:'';
+    const dot=wc?`<div class="dot" style="background:${wc}"></div>`:'';
+    html+=`<div class="${cls}" style="${bg}" title="Day ${d+1}${w?' · '+w:''}">${d+1}${dot}</div>`;
+  }
+  html+=`</div><div class="cal-legend">`;
+  parts.forEach((p,i)=>{ html+=`<div class="cal-legend-item"><div class="cal-legend-dot" style="background:${RANK_COLORS[i%RANK_COLORS.length]}"></div>${p.name}</div>`; });
+  html+=`</div></div>`;
+  return html;
+}
+
+function renderTable(recent,parts) {
+  let html=`<div class="section"><div class="section-label">📊 Recent Stages</div><table>
+    <thead><tr><th>#</th><th>Date</th><th>Winner</th>`;
+  parts.forEach(p=>{html+=`<th>${p.name}</th>`;});
+  html+=`</tr></thead><tbody>`;
+  recent.forEach((e,i)=>{
+    const wKey=e.winner||'';
+    const wPart=parts.find(p=>p.key===wKey||(p.name.toLowerCase().replace(/\s+/g,'_'))===wKey);
+    html+=`<tr><td style="color:var(--muted)">${recent.length-i}</td>
+      <td style="color:var(--muted);font-size:.7rem">${fmtDate(e.date)}</td>
+      <td>${wPart?wPart.name:'—'}</td>`;
+    parts.forEach((p,pi)=>{
+      const k=p.key||(p.name.toLowerCase().replace(/\s+/g,'_'));
+      const v=e.steps?.[k]; const isW=(wKey===k);
+      const col=isW?RANK_COLORS[pi%RANK_COLORS.length]:'var(--muted)';
+      html+=`<td style="color:${col};font-weight:${isW?700:400}">${v!==undefined?fmt(v):'—'}</td>`;
+    });
+    html+=`</tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  return html;
+}
+
+connect();
+</script>
+</body>
+</html>
