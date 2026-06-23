@@ -37,7 +37,6 @@ Via HACS: Benutzerdefiniertes Repository `https://github.com/Noack1978/ha-step-c
 4. Bei Aufforderung neu starten
 
 Die Integration richtet automatisch ein:
-- Die Custom Card `custom:step-challenge-card` als Lovelace-Ressource
 - Das Rennpanel in der Seitenleiste unter „Step Challenge"
 - Sensoren für jeden Teilnehmer und die Challenge insgesamt
 
@@ -58,11 +57,6 @@ Jederzeit über **Einstellungen → Geräte & Dienste → Step Challenge → Kon
 
 Das Panel erscheint automatisch in der **Seitenleiste** unter „Step Challenge".
 
-Die Karte lässt sich außerdem in jedes Dashboard einfügen:
-
-```yaml
-type: custom:step-challenge-card
-```
 
 ### Dienste
 
@@ -104,7 +98,6 @@ Via HACS: Add custom repository `https://github.com/Noack1978/ha-step-challenge`
 4. Restart if prompted
 
 The integration automatically:
-- Registers the `custom:step-challenge-card` as a Lovelace resource
 - Adds the race panel to the sidebar under "Step Challenge"
 - Creates sensors for each participant and the overall challenge
 
@@ -125,11 +118,6 @@ Use the **Start** button in the race card, or call the service `step_challenge.s
 
 The panel is automatically added to the **sidebar** under "Step Challenge".
 
-The card can also be added to any dashboard:
-
-```yaml
-type: custom:step-challenge-card
-```
 
 ### Services
 
