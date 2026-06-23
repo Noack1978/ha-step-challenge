@@ -191,17 +191,9 @@ async function loadAll() {
   storeData.start = daysEnt?.attributes?.start_date || null;
   storeData.active = getStatus() === 'active';
 
-  const stageSensors = Object.values(haStates).filter(s =>
-    s.entity_id.includes('step_challenge') && s.entity_id.includes('stage')
-  );
-  const histMap = {};
-  stageSensors.forEach(s => {
-    const key = s.attributes?.participant_key;
-    (s.attributes?.won_dates || []).forEach(date => {
-      if (!histMap[date]) histMap[date] = { date, winner: key, steps: {} };
-    });
-  });
-  storeData.history = Object.values(histMap).sort((a, b) => a.date.localeCompare(b.date));
+  // Read full history (with step counts) from status sensor attribute
+  const statusEnt = findEnt('_status');
+  storeData.history = statusEnt?.attributes?.history || [];
 }
 
 async function refresh() {

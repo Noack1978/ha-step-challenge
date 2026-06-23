@@ -176,6 +176,7 @@ class ChallengeStatusSensor(_Base):
         return {
             "start": self._store.start,
             "stages_recorded": len(self._store.history),
+            "history": self._store.history,
         }
 
 
