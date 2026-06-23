@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from datetime import datetime
 from pathlib import Path
 
 from homeassistant.components.frontend import async_register_built_in_panel
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.persistent_notification import async_create as pn_create
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
@@ -14,19 +14,36 @@ from homeassistant.core import CoreState, HomeAssistant, ServiceCall, callback
 from homeassistant.util.dt import now as ha_now
 
 from .const import (
+    CARD_FILE,
     CONF_PARTICIPANTS,
     CONF_RECORD_TIME,
     DEFAULT_RECORD_TIME,
     DOMAIN,
     INTEGRATION_VERSION,
+    PANEL_NAME,
+    PANEL_URL,
     PLATFORMS,
     SERVICE_RECORD_DAY,
     SERVICE_START,
     SERVICE_STOP,
+    STATIC_URL,
 )
 from .storage import ChallengeStore
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register static path for the card JS (once at startup)."""
+    frontend_dir = Path(__file__).parent / "frontend"
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(STATIC_URL, str(frontend_dir), cache_headers=False)]
+        )
+        _LOGGER.debug("Step Challenge: static path registered at %s", STATIC_URL)
+    except RuntimeError:
+        _LOGGER.debug("Step Challenge: static path already registered")
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -38,22 +55,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {"store": store}
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    await hass.async_add_executor_job(_provision_www, hass)
 
     @callback
     def _register_panel(_event=None) -> None:
+        if PANEL_URL in hass.data.get("frontend_panels", {}):
+            return
         try:
             async_register_built_in_panel(
                 hass,
-                component_name="iframe",
+                component_name="custom",
                 sidebar_title="Step Challenge",
                 sidebar_icon="mdi:racing-helmet",
-                frontend_url_path=DOMAIN,
-                config={"url": f"/local/{DOMAIN}/index.html?v={INTEGRATION_VERSION}"},
+                frontend_url_path=PANEL_URL,
+                config={
+                    "_panel_custom": {
+                        "name": PANEL_NAME,
+                        "embed_iframe": False,
+                        "trust_external": False,
+                        "module_url": f"{STATIC_URL}/{CARD_FILE}?v={INTEGRATION_VERSION}",
+                    }
+                },
                 require_admin=False,
             )
-        except Exception:  # noqa: BLE001
-            pass
+            _LOGGER.info("Step Challenge: panel registered at /%s", PANEL_URL)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Step Challenge: could not register panel: %s", err)
 
     if hass.state is CoreState.running:
         _register_panel()
@@ -71,13 +97,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         title="Step Challenge",
         message=(
             f"✅ Step Challenge ist bereit!\n\n"
-            f"**Erster Start:** Im Panel oben rechts auf 🔑 tippen und einen "
-            f"Langlebigen Zugriffstoken eingeben.\n"
-            f"*Profil → Sicherheit → Langlebige Zugriffstoken*\n\n"
-            f"**Blueprint** für die tägliche Auswertung um **{record_time}**:\n"
-            f"*Einstellungen → Automationen → Blueprints → Blueprint importieren*\n"
+            f"Blueprint importieren für die tägliche Auswertung um **{record_time}**:\n"
+            f"*Einstellungen → Automationen → Blueprints → Blueprint importieren*\n\n"
             f"`https://github.com/Noack1978/ha-step-challenge/blob/main/"
-            f"blueprints/automation/step_challenge/daily_stage.yaml`"
+            f"blueprints/automation/step_challenge/daily_stage.yaml`\n\n"
+            f"Die Karte ist auch in jedem Dashboard verfügbar:\n"
+            f"`custom:step-challenge-card`"
         ),
         notification_id=f"{DOMAIN}_setup_hint",
     )
@@ -93,7 +118,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.data[DOMAIN]:
             from homeassistant.components.frontend import async_remove_panel
             try:
-                async_remove_panel(hass, DOMAIN)
+                async_remove_panel(hass, PANEL_URL)
             except Exception:  # noqa: BLE001
                 pass
     return unload_ok
@@ -103,14 +128,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-def _provision_www(hass: HomeAssistant) -> None:
-    src_dir = Path(__file__).parent / "www"
-    dst_dir = Path(hass.config.path("www", DOMAIN))
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    for src_file in src_dir.iterdir():
-        if src_file.is_file():
-            shutil.copy2(src_file, dst_dir / src_file.name)
-
+# ── Services ──────────────────────────────────────────────────────────────────
 
 def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
