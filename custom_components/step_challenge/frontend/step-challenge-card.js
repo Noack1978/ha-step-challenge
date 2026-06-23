@@ -39,7 +39,7 @@ class StepChallengeCard extends HTMLElement {
     }
   }
 
-  set panel(v)  { /* not used, required by HA */ }
+  set panel(v) { this._isPanel = true; this._render(); }
   set narrow(v) { /* not used, required by HA */ }
   set route(v)  { /* not used, required by HA */ }
 
@@ -149,6 +149,7 @@ class StepChallengeCard extends HTMLElement {
 
     let h = `
       <div class="header">
+        ${this._isPanel ? `<button class="menu-btn" id="menu-btn" title="Menu">☰</button>` : ''}
         <div class="hl">
           <h1>🏁 ${name}</h1>
           <div class="sub">Day ${elapsed} of ${total}</div>
@@ -241,6 +242,10 @@ class StepChallengeCard extends HTMLElement {
     this.shadowRoot.getElementById('s')?.addEventListener('click', () => this._call('start'));
     this.shadowRoot.getElementById('x')?.addEventListener('click', () => this._call('stop'));
     this.shadowRoot.getElementById('r')?.addEventListener('click', () => this._call('record_day'));
+    this.shadowRoot.getElementById('menu-btn')?.addEventListener('click', () => {
+      // Fire HA sidebar toggle event – same method used by Music Assistant / Beatify
+      this.dispatchEvent(new CustomEvent('hass-toggle-menu', { bubbles: true, composed: true }));
+    });
   }
 
   _cal(elapsed, total, parts, history, startIso) {
@@ -304,6 +309,10 @@ const CSS = `
 
   .header { padding:16px 20px 14px; border-bottom:2px solid var(--accent-color,#e94560);
     display:flex; align-items:center; gap:12px; }
+  .menu-btn { background:none; border:none; cursor:pointer; font-size:1.3rem;
+    color:var(--primary-text-color); padding:4px 8px 4px 0; line-height:1;
+    flex-shrink:0; opacity:.8; }
+  .menu-btn:hover { opacity:1; }
   .header h1 { font-size:1.25rem; font-weight:700; margin:0; }
   .header .sub { font-size:.72rem; color:var(--secondary-text-color); margin-top:2px; }
   .hl { flex:1; }
@@ -399,3 +408,12 @@ const CSS = `
 `;
 
 customElements.define('step-challenge-card', StepChallengeCard);
+
+// Register for Lovelace card picker
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: 'step-challenge-card',
+  name: 'Step Challenge',
+  preview: false,
+  description: 'Animated step-count race for the Step Challenge integration.',
+});
