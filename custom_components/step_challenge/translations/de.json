@@ -88,10 +88,12 @@
         "data": {
           "challenge_name": "Challenge-Name",
           "duration_days": "Dauer (Tage, 7–365)",
-          "record_time": "Auswertungszeit (täglich)"
+          "record_time": "Auswertungszeit (täglich)",
+          "show_blueprint_hint": "Blueprint-Hinweis anzeigen"
         },
         "data_description": {
-          "record_time": "Uhrzeit, zu der täglich der Tagessieger ermittelt wird."
+          "record_time": "Uhrzeit, zu der täglich der Tagessieger ermittelt wird.",
+          "show_blueprint_hint": "Beim Start eine Benachrichtigung mit dem Blueprint-Link anzeigen. Deaktivieren wenn der Blueprint bereits eingerichtet ist."
         }
       }
     },

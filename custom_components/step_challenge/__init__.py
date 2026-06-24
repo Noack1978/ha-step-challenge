@@ -17,7 +17,9 @@ from .const import (
     CARD_FILE,
     CONF_PARTICIPANTS,
     CONF_RECORD_TIME,
+    CONF_SHOW_BLUEPRINT_HINT,
     DEFAULT_RECORD_TIME,
+    DEFAULT_SHOW_BLUEPRINT_HINT,
     DOMAIN,
     INTEGRATION_VERSION,
     PANEL_NAME,
@@ -92,20 +94,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_RECORD_TIME,
         entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME),
     )
-    pn_create(
-        hass,
-        title="Step Challenge",
-        message=(
-            f"✅ Step Challenge ist bereit!\n\n"
-            f"Blueprint importieren für die tägliche Auswertung um **{record_time}**:\n"
-            f"*Einstellungen → Automationen → Blueprints → Blueprint importieren*\n\n"
-            f"`https://github.com/Noack1978/ha-step-challenge/blob/main/"
-            f"blueprints/automation/step_challenge/daily_stage.yaml`\n\n"
-            f"Die Karte ist auch in jedem Dashboard verfügbar:\n"
-            f"`custom:step-challenge-card`"
-        ),
-        notification_id=f"{DOMAIN}_setup_hint",
+    show_hint = entry.options.get(
+        CONF_SHOW_BLUEPRINT_HINT,
+        entry.data.get(CONF_SHOW_BLUEPRINT_HINT, DEFAULT_SHOW_BLUEPRINT_HINT),
     )
+    if show_hint:
+        pn_create(
+            hass,
+            title="Step Challenge",
+            message=(
+                f"✅ Step Challenge ist bereit!\n\n"
+                f"Blueprint importieren für die tägliche Auswertung um **{record_time}**:\n"
+                f"*Einstellungen → Automationen → Blueprints → Blueprint importieren*\n\n"
+                f"`https://github.com/Noack1978/ha-step-challenge/blob/main/"
+                f"blueprints/automation/step_challenge/daily_stage.yaml`\n\n"
+                f"Diesen Hinweis deaktivieren: *Konfigurieren → Challenge-Einstellungen*"
+            ),
+            notification_id=f"{DOMAIN}_setup_hint",
+        )
 
     return True
 

@@ -409,11 +409,3 @@ const CSS = `
 
 customElements.define('step-challenge-card', StepChallengeCard);
 
-// Register for Lovelace card picker
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: 'step-challenge-card',
-  name: 'Step Challenge',
-  preview: false,
-  description: 'Animated step-count race for the Step Challenge integration.',
-});

@@ -88,10 +88,12 @@
         "data": {
           "challenge_name": "Challenge name",
           "duration_days": "Duration (days, 7–365)",
-          "record_time": "Daily evaluation time"
+          "record_time": "Daily evaluation time",
+          "show_blueprint_hint": "Show blueprint hint"
         },
         "data_description": {
-          "record_time": "Time at which the daily stage winner is determined."
+          "record_time": "Time at which the daily stage winner is determined.",
+          "show_blueprint_hint": "Show a notification with the blueprint link on startup. Disable if the blueprint is already set up."
         }
       }
     },
