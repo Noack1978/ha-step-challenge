@@ -249,7 +249,9 @@ class StepChallengeCard extends HTMLElement {
   }
 
   _cal(elapsed, total, parts, history, startIso) {
-    const sd   = new Date(startIso);
+    // Normalize start date to local midnight to avoid timezone drift
+    const _sd0 = new Date(startIso);
+    const sd   = new Date(_sd0.getFullYear(), _sd0.getMonth(), _sd0.getDate());
     const td   = new Date(); td.setHours(0,0,0,0);
     const cMap = {}; parts.forEach((p,i) => { cMap[p.key] = COLORS[i % COLORS.length]; });
 
@@ -258,7 +260,9 @@ class StepChallengeCard extends HTMLElement {
       const dd = new Date(sd.getTime() + d * 86400000); dd.setHours(0,0,0,0);
       const isT = dd.getTime() === td.getTime(), isF = dd > td;
       const ent = history.find(e => {
-        const ed = new Date(e.date); ed.setHours(0,0,0,0);
+        // Parse YYYY-MM-DD as local date (avoid UTC offset issues)
+        const [ey, em, eday] = e.date.split('-').map(Number);
+        const ed = new Date(ey, em - 1, eday);
         return Math.round((ed - sd) / 86400000) === d;
       });
       const w = ent?.winner, wc = w ? (cMap[w] || '#888') : null;
