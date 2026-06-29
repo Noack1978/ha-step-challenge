@@ -287,196 +287,191 @@ class StepChallengeCard extends HTMLElement {
 
 
   _raceTrack(elapsed, total, parts, history, startIso) {
-    const W = 800, H = 180, PAD_L = 32, PAD_R = 32, PAD_T = 24, PAD_B = 36;
-    const TW = W - PAD_L - PAD_R;  // track width
-    const TH = H - PAD_T - PAD_B;  // track height
+    const W = 800, H = 200, PAD_L = 40, PAD_R = 40, PAD_T = 30, PAD_B = 44;
+    const TW = W - PAD_L - PAD_R;
+    const TH = H - PAD_T - PAD_B;
 
-    // ── Deterministic terrain from challenge name + total days ───────────────
-    // Seeded pseudo-random so the same challenge always shows the same profile
+    // ── Deterministic terrain ─────────────────────────────────────────────────
     const seed = (this._name().split('').reduce((a,c) => a + c.charCodeAt(0), 0) + total) | 0;
     const rng = (i) => { const x = Math.sin(seed + i) * 43758.5453; return x - Math.floor(x); };
 
-    // Generate elevation profile: num control points proportional to total days
-    const nPts = Math.max(6, Math.min(total + 2, 20));
-    const ctrlX = [], ctrlY = [];
-    ctrlX.push(0); ctrlY.push(0.5);
-    for (let i = 1; i < nPts - 1; i++) {
-      ctrlX.push(i / (nPts - 1));
-      // Mountains in middle third, flatter at start/end
-      const mid = Math.abs(i / (nPts - 1) - 0.5) < 0.35;
-      const base = mid ? 0.25 : 0.6;
-      ctrlY.push(base + rng(i * 7) * (mid ? 0.5 : 0.25));
+    // One elevation point per day boundary (total+1 points for 0..total)
+    const elevY = [];
+    elevY.push(0.55); // start
+    for (let d = 1; d < total; d++) {
+      const mid = Math.abs(d / total - 0.5) < 0.38;
+      const base = mid ? 0.2 : 0.55;
+      const range = mid ? 0.55 : 0.3;
+      elevY.push(base + rng(d * 7) * range);
     }
-    ctrlX.push(1); ctrlY.push(0.5);
+    elevY.push(0.5); // finish
 
-    // Convert control points to SVG path (catmull-rom spline)
-    const px = ctrlX.map(x => PAD_L + x * TW);
-    const py = ctrlY.map(y => PAD_T + y * TH);
+    // Convert to SVG coords
+    const toX = (d) => PAD_L + (d / total) * TW;
+    const toY = (e) => PAD_T + e * TH;
 
-    const catmull = (pts_x, pts_y) => {
-      let d = `M ${pts_x[0].toFixed(1)} ${pts_y[0].toFixed(1)}`;
-      for (let i = 0; i < pts_x.length - 1; i++) {
-        const p0 = i > 0 ? i - 1 : i;
-        const p1 = i, p2 = i + 1;
-        const p3 = i < pts_x.length - 2 ? i + 2 : p2;
-        const cp1x = pts_x[p1] + (pts_x[p2] - pts_x[p0]) / 6;
-        const cp1y = pts_y[p1] + (pts_y[p2] - pts_y[p0]) / 6;
-        const cp2x = pts_x[p2] - (pts_x[p3] - pts_x[p1]) / 6;
-        const cp2y = pts_y[p2] - (pts_y[p3] - pts_y[p1]) / 6;
-        d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${pts_x[p2].toFixed(1)} ${pts_y[p2].toFixed(1)}`;
+    // Catmull-Rom through all day-boundary points
+    const allX = elevY.map((_, i) => toX(i));
+    const allY = elevY.map(e => toY(e));
+
+    const catmull = (xs, ys) => {
+      let d = `M ${xs[0].toFixed(1)} ${ys[0].toFixed(1)}`;
+      for (let i = 0; i < xs.length - 1; i++) {
+        const p0 = Math.max(i-1, 0), p1=i, p2=i+1, p3=Math.min(i+2, xs.length-1);
+        const cp1x = xs[p1] + (xs[p2]-xs[p0])/6, cp1y = ys[p1] + (ys[p2]-ys[p0])/6;
+        const cp2x = xs[p2] - (xs[p3]-xs[p1])/6, cp2y = ys[p2] - (ys[p3]-ys[p1])/6;
+        d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)},${cp2x.toFixed(1)} ${cp2y.toFixed(1)},${xs[p2].toFixed(1)} ${ys[p2].toFixed(1)}`;
       }
       return d;
     };
 
-    const trackPath = catmull(px, py);
-
-    // Area under the track (filled)
-    const areaPath = trackPath + ` L ${px[px.length-1].toFixed(1)} ${(PAD_T + TH).toFixed(1)} L ${px[0].toFixed(1)} ${(PAD_T + TH).toFixed(1)} Z`;
-
-    // ── Position of each participant on track ─────────────────────────────────
-    // Total steps per participant across all history + today
-    const [_sd0, startDt] = (() => {
-      const s = new Date(startIso);
-      return [s, new Date(s.getFullYear(), s.getMonth(), s.getDate())];
-    })();
-
-    // Build cumulative steps per participant from history
-    const cumSteps = {};
-    parts.forEach(p => { cumSteps[p.key] = 0; });
-
-    // Add steps from completed days
-    history.forEach(e => {
-      Object.entries(e.steps || {}).forEach(([k, v]) => {
-        if (cumSteps[k] !== undefined) cumSteps[k] += v;
-      });
-    });
-
-    // Add today's steps (partial, weighted by time of day)
-    const now = new Date();
-    const todayFraction = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400;
-    const todayWeight = Math.min(todayFraction / 0.9, 1); // assume 90% of steps by 21:36
-    parts.forEach(p => {
-      cumSteps[p.key] = (cumSteps[p.key] || 0) + p.steps * todayWeight;
-    });
-
-    // Max steps determines scale
-    const maxCum = Math.max(...Object.values(cumSteps), 1);
-
-    // Position = fraction along track [0..1]
-    const pos = {};
-    parts.forEach(p => { pos[p.key] = Math.min(cumSteps[p.key] / maxCum, 1); });
-
-    // ── Get Y coordinate on catmull-rom at fraction t ─────────────────────────
-    const getTrackY = (t) => {
-      // Find segment
-      const segCount = ctrlX.length - 1;
-      const segT = t * segCount;
-      const seg = Math.min(Math.floor(segT), segCount - 1);
-      const lt = segT - seg;
-
-      const i0 = Math.max(seg - 1, 0);
-      const i1 = seg;
-      const i2 = Math.min(seg + 1, ctrlX.length - 1);
-      const i3 = Math.min(seg + 2, ctrlX.length - 1);
-
-      const cp1x = px[i1] + (px[i2] - px[i0]) / 6;
-      const cp1y = py[i1] + (py[i2] - py[i0]) / 6;
-      const cp2x = px[i2] - (px[i3] - px[i1]) / 6;
-      const cp2y = py[i2] - (py[i3] - py[i1]) / 6;
-
-      // Cubic bezier Y at lt
-      const u = 1 - lt;
-      return u*u*u*py[i1] + 3*u*u*lt*cp1y + 3*u*lt*lt*cp2y + lt*lt*lt*py[i2];
+    // Get Y at fractional day position using cubic bezier interpolation
+    const getYatDay = (dayFrac) => {
+      const seg = Math.min(Math.floor(dayFrac), total - 1);
+      const t   = dayFrac - seg;
+      const p0 = Math.max(seg-1,0), p1=seg, p2=Math.min(seg+1,total), p3=Math.min(seg+2,total);
+      const cp1y = allY[p1] + (allY[p2]-allY[p0])/6;
+      const cp2y = allY[p2] - (allY[p3]-allY[p1])/6;
+      const u = 1-t;
+      return u*u*u*allY[p1] + 3*u*u*t*cp1y + 3*u*t*t*cp2y + t*t*t*allY[p2];
     };
+    const getXatDay = (dayFrac) => PAD_L + (dayFrac / total) * TW;
 
-    const getTrackX = (t) => PAD_L + t * TW;
+    const trackPath = catmull(allX, allY);
+    const areaPath  = trackPath + ` L ${allX[allX.length-1].toFixed(1)} ${(PAD_T+TH).toFixed(1)} L ${allX[0].toFixed(1)} ${(PAD_T+TH).toFixed(1)} Z`;
 
     // ── Etappen-Markierungen ──────────────────────────────────────────────────
-    let etappenMarkers = '';
+    let markers = '';
     for (let d = 1; d < total; d++) {
-      const tx = PAD_L + (d / total) * TW;
-      const isElapsed = d <= elapsed;
-      etappenMarkers += `<line x1="${tx.toFixed(1)}" y1="${PAD_T}" x2="${tx.toFixed(1)}" y2="${(PAD_T+TH).toFixed(1)}"
-        stroke="${isElapsed ? '#ffffff18' : '#ffffff08'}" stroke-width="1" stroke-dasharray="3,3"/>`;
+      const mx = toX(d);
+      const done = d < elapsed;
+      markers += `<line x1="${mx.toFixed(1)}" y1="${PAD_T}" x2="${mx.toFixed(1)}" y2="${(PAD_T+TH).toFixed(1)}"
+        stroke="${done ? '#ffffff18' : '#ffffff08'}" stroke-width="1" stroke-dasharray="3,4"/>`;
+    }
+    // Day labels – show every day if ≤ 31, else every 5
+    for (let d = 0; d <= total; d++) {
       if (total <= 31 || d % 5 === 0) {
-        etappenMarkers += `<text x="${tx.toFixed(1)}" y="${(PAD_T+TH+12).toFixed(1)}" text-anchor="middle"
-          font-size="7" fill="#6b6b8a">${d}</text>`;
+        markers += `<text x="${toX(d).toFixed(1)}" y="${(PAD_T+TH+14).toFixed(1)}"
+          text-anchor="middle" font-size="8" fill="#6b6b8a">${d}</text>`;
       }
     }
 
     // ── Today marker ──────────────────────────────────────────────────────────
-    const todayX = PAD_L + (Math.min(elapsed, total) / total) * TW;
+    const todayX = toX(elapsed);
     const todayMarker = `<line x1="${todayX.toFixed(1)}" y1="${PAD_T}" x2="${todayX.toFixed(1)}" y2="${(PAD_T+TH).toFixed(1)}"
-      stroke="var(--accent-color,#e94560)" stroke-width="1.5" opacity="0.6"/>`;
+      stroke="var(--accent-color,#e94560)" stroke-width="1.5" opacity="0.7"/>
+      <text x="${todayX.toFixed(1)}" y="${(PAD_T-6).toFixed(1)}" text-anchor="middle"
+        font-size="8" fill="var(--accent-color,#e94560)" opacity="0.8">heute</text>`;
 
-    // ── Participant dots ───────────────────────────────────────────────────────
-    // Sort by position descending so leading dot renders on top
-    const sortedParts = [...parts].sort((a,b) => pos[a.key] - pos[b.key]);
-    let dots = '';
-    sortedParts.forEach((p, i) => {
-      const t = pos[p.key];
-      const dx = getTrackX(t);
-      const dy = getTrackY(t);
-      const color = COLORS[parts.indexOf(p) % COLORS.length];
-      const isLeader = i === sortedParts.length - 1;
-      const r = isLeader ? 7 : 5.5;
+    // ── Participant positions ─────────────────────────────────────────────────
+    // For each completed day: winner is at day boundary, others proportionally behind
+    // For current day: position within today's etappe based on steps × time-of-day
 
-      // Dot
-      dots += `<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="${r}"
-        fill="${color}" stroke="var(--card-background-color)" stroke-width="1.5"
-        filter="${isLeader ? 'url(#glow)' : ''}"/>`;
-
-      // Name label: alternate above/below to avoid overlap
-      const labelY = i % 2 === 0 ? dy - r - 4 : dy + r + 10;
-      dots += `<text x="${dx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle"
-        font-size="8" font-weight="${isLeader ? 700 : 400}" fill="${color}">${p.name}</text>`;
+    // Build per-day step map from history
+    const daySteps = {}; // daySteps[d] = {key: steps}
+    history.forEach(e => {
+      const [ey, em, eday2] = e.date.split('-').map(Number);
+      const ed = new Date(ey, em-1, eday2);
+      const [sy, sm, sday] = startIso.split('T')[0].split('-').map(Number);
+      const sd = new Date(sy, sm-1, sday);
+      const dayNum = Math.round((ed - sd) / 86400000) + 1; // 1-indexed
+      daySteps[dayNum] = e.steps || {};
     });
 
-    // ── SVG assembly ──────────────────────────────────────────────────────────
+    // Cumulative day position for each participant
+    // After day d: position = d + (own_steps_d / max_steps_d * 0 gap) → all at d
+    // Actually: winner is exactly at day d boundary.
+    // Others are placed at d - (1 - ratio) * stage_gap
+    // where stage_gap = fraction of one stage they "lost"
+    // Simpler: all at same X per completed day (they all finished the stage)
+    // Visual interest: within each completed stage, show finishing order
+    // → for completed days: dots stacked slightly offset at day boundary
+    // → for current day: dots at partial position within today's stage
+
+    const now2 = new Date();
+    const todayFrac = Math.min(
+      (now2.getHours() * 3600 + now2.getMinutes() * 60 + now2.getSeconds()) / (21 * 3600),
+      1
+    ); // fraction of active day (assume day ends at 21:00)
+
+    // Position per participant: a fractional day value
+    const posDay = {};
+    parts.forEach(p => { posDay[p.key] = 0; });
+
+    // For each completed stage, winner is at stage end, others proportionally behind within stage
+    for (let d = 1; d <= Math.min(elapsed - 1, history.length); d++) {
+      const stepsToday = daySteps[d] || {};
+      const maxS = Math.max(...Object.values(stepsToday), 1);
+      parts.forEach(p => {
+        const ratio = (stepsToday[p.key] || 0) / maxS;
+        // Move to start of this stage + fraction of stage based on ratio
+        // Winner (ratio=1) reaches end of stage (day d)
+        // Others reach proportionally less
+        posDay[p.key] = (d - 1) + ratio;
+      });
+    }
+
+    // Current day (elapsed): partial position within today's stage
+    const todayStepsMap = {};
+    parts.forEach(p => { todayStepsMap[p.key] = p.steps; });
+    const maxTodaySteps = Math.max(...parts.map(p => p.steps), 1);
+    parts.forEach(p => {
+      const stepRatio = p.steps / maxTodaySteps;
+      // Position: start of today's stage + (stepRatio × todayFrac)
+      posDay[p.key] = (elapsed - 1) + stepRatio * todayFrac;
+    });
+
+    // ── Draw dots ─────────────────────────────────────────────────────────────
+    const sorted = [...parts].sort((a,b) => posDay[a.key] - posDay[b.key]);
+    let dots = '';
+    sorted.forEach((p, i) => {
+      const dayPos = posDay[p.key];
+      const dx = getXatDay(dayPos);
+      const dy = getYatDay(dayPos);
+      const color = COLORS[parts.indexOf(p) % COLORS.length];
+      const isLeader = i === sorted.length - 1;
+      const r = isLeader ? 8 : 6;
+
+      // Offset overlapping dots slightly vertically
+      const yOff = (sorted.length > 1 && Math.abs(posDay[p.key] - posDay[sorted[i===0?1:i-1]?.key||'']) < 0.05)
+        ? (i % 2 === 0 ? -8 : 8) : 0;
+
+      dots += `<circle cx="${dx.toFixed(1)}" cy="${(dy+yOff).toFixed(1)}" r="${r}"
+        fill="${color}" stroke="var(--card-background-color)" stroke-width="2"
+        ${isLeader ? 'filter="url(#glow)"' : ''}/>`;
+
+      // Label: alternate above/below
+      const labelY = i % 2 === 0 ? dy + yOff - r - 5 : dy + yOff + r + 11;
+      dots += `<text x="${dx.toFixed(1)}" y="${labelY.toFixed(1)}"
+        text-anchor="${dayPos > total * 0.85 ? 'end' : 'middle'}"
+        font-size="9" font-weight="${isLeader ? 700 : 400}"
+        fill="${color}">${p.name}</text>`;
+    });
+
     return `<div class="sec">
       <div class="sec-label">🗺 Total Steps Race</div>
       <div class="track-wrap">
         <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
-             style="width:100%;height:auto;display:block;">
+             style="width:100%;height:auto;display:block;overflow:visible">
           <defs>
-            <linearGradient id="trackGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="var(--accent-color,#e94560)" stop-opacity="0.15"/>
-              <stop offset="100%" stop-color="var(--accent-color,#e94560)" stop-opacity="0.03"/>
+            <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--accent-color,#e94560)" stop-opacity="0.18"/>
+              <stop offset="100%" stop-color="var(--accent-color,#e94560)" stop-opacity="0.02"/>
             </linearGradient>
-            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="2" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
+            <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           </defs>
 
-          <!-- Area fill under track -->
-          <path d="${areaPath}" fill="url(#trackGrad)"/>
-
-          <!-- Etappen markers -->
-          ${etappenMarkers}
-
-          <!-- Today marker -->
+          <path d="${areaPath}" fill="url(#tg)"/>
+          ${markers}
           ${todayMarker}
-
-          <!-- Track line -->
           <path d="${trackPath}" fill="none"
-            stroke="var(--accent-color,#e94560)" stroke-width="2.5" stroke-linecap="round"/>
+            stroke="var(--accent-color,#e94560)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
 
-          <!-- Start flag -->
-          <text x="${(PAD_L - 2).toFixed(1)}" y="${(PAD_T + TH + 12).toFixed(1)}"
-            text-anchor="middle" font-size="10">🏁</text>
+          <!-- Start / Finish -->
+          <text x="${(PAD_L-6).toFixed(1)}" y="${(PAD_T+TH+14).toFixed(1)}" text-anchor="middle" font-size="13">🏁</text>
+          <text x="${(PAD_L+TW+6).toFixed(1)}" y="${(PAD_T+TH+14).toFixed(1)}" text-anchor="middle" font-size="13">🏆</text>
 
-          <!-- Finish flag -->
-          <text x="${(PAD_L + TW + 2).toFixed(1)}" y="${(PAD_T + TH + 12).toFixed(1)}"
-            text-anchor="middle" font-size="10">🏆</text>
-
-          <!-- Day labels -->
-          <text x="${PAD_L.toFixed(1)}" y="${(PAD_T + TH + 12).toFixed(1)}"
-            text-anchor="middle" font-size="7" fill="#6b6b8a">0</text>
-          <text x="${(PAD_L + TW).toFixed(1)}" y="${(PAD_T + TH + 12).toFixed(1)}"
-            text-anchor="middle" font-size="7" fill="#6b6b8a">${total}</text>
-
-          <!-- Participant dots (on top) -->
           ${dots}
         </svg>
       </div>
