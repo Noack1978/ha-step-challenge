@@ -17,6 +17,7 @@ class StepChallengeCard extends HTMLElement {
     this._inited   = false;
     this._unsubFn  = null;         // cleanup handle for event subscription
     this._stateKey = '';           // hash of relevant states for change detection
+    this._showTrack = false;       // toggle for race track view
   }
 
   // ── HA lifecycle ─────────────────────────────────────────────────────────
@@ -164,6 +165,7 @@ class StepChallengeCard extends HTMLElement {
         <button class="btn btn-start" id="s">🚩 Start</button>
         <button class="btn btn-stop"  id="x">⏹ Stop</button>
         <button class="btn btn-rec"   id="r">📋 Record Day</button>
+        <button class="btn btn-track ${this._showTrack ? 'btn-track-on' : ''}" id="t">🗺 Route</button>
       </div>`;
 
     if (status === 'inactive') {
@@ -219,6 +221,7 @@ class StepChallengeCard extends HTMLElement {
     h += `</div>`;
 
     if (elapsed > 0 && start) h += this._cal(elapsed, total, parts, history, start);
+    if (this._showTrack && elapsed > 0 && start) h += this._raceTrack(elapsed, total, parts, history, start);
     if (history.length > 0)   h += this._table(history.slice(-7).reverse(), parts);
 
     this._paint(h);
@@ -242,6 +245,10 @@ class StepChallengeCard extends HTMLElement {
     this.shadowRoot.getElementById('s')?.addEventListener('click', () => this._call('start'));
     this.shadowRoot.getElementById('x')?.addEventListener('click', () => this._call('stop'));
     this.shadowRoot.getElementById('r')?.addEventListener('click', () => this._call('record_day'));
+    this.shadowRoot.getElementById('t')?.addEventListener('click', () => {
+      this._showTrack = !this._showTrack;
+      this._render();
+    });
     this.shadowRoot.getElementById('menu-btn')?.addEventListener('click', () => {
       // Fire HA sidebar toggle event – same method used by Music Assistant / Beatify
       this.dispatchEvent(new CustomEvent('hass-toggle-menu', { bubbles: true, composed: true }));
@@ -276,6 +283,204 @@ class StepChallengeCard extends HTMLElement {
       h += `<div class="leg-item"><div class="leg-dot" style="background:${COLORS[i%COLORS.length]}"></div>${p.name}</div>`;
     });
     return h + `</div></div>`;
+  }
+
+
+  _raceTrack(elapsed, total, parts, history, startIso) {
+    const W = 800, H = 180, PAD_L = 32, PAD_R = 32, PAD_T = 24, PAD_B = 36;
+    const TW = W - PAD_L - PAD_R;  // track width
+    const TH = H - PAD_T - PAD_B;  // track height
+
+    // ── Deterministic terrain from challenge name + total days ───────────────
+    // Seeded pseudo-random so the same challenge always shows the same profile
+    const seed = (this._name().split('').reduce((a,c) => a + c.charCodeAt(0), 0) + total) | 0;
+    const rng = (i) => { const x = Math.sin(seed + i) * 43758.5453; return x - Math.floor(x); };
+
+    // Generate elevation profile: num control points proportional to total days
+    const nPts = Math.max(6, Math.min(total + 2, 20));
+    const ctrlX = [], ctrlY = [];
+    ctrlX.push(0); ctrlY.push(0.5);
+    for (let i = 1; i < nPts - 1; i++) {
+      ctrlX.push(i / (nPts - 1));
+      // Mountains in middle third, flatter at start/end
+      const mid = Math.abs(i / (nPts - 1) - 0.5) < 0.35;
+      const base = mid ? 0.25 : 0.6;
+      ctrlY.push(base + rng(i * 7) * (mid ? 0.5 : 0.25));
+    }
+    ctrlX.push(1); ctrlY.push(0.5);
+
+    // Convert control points to SVG path (catmull-rom spline)
+    const px = ctrlX.map(x => PAD_L + x * TW);
+    const py = ctrlY.map(y => PAD_T + y * TH);
+
+    const catmull = (pts_x, pts_y) => {
+      let d = `M ${pts_x[0].toFixed(1)} ${pts_y[0].toFixed(1)}`;
+      for (let i = 0; i < pts_x.length - 1; i++) {
+        const p0 = i > 0 ? i - 1 : i;
+        const p1 = i, p2 = i + 1;
+        const p3 = i < pts_x.length - 2 ? i + 2 : p2;
+        const cp1x = pts_x[p1] + (pts_x[p2] - pts_x[p0]) / 6;
+        const cp1y = pts_y[p1] + (pts_y[p2] - pts_y[p0]) / 6;
+        const cp2x = pts_x[p2] - (pts_x[p3] - pts_x[p1]) / 6;
+        const cp2y = pts_y[p2] - (pts_y[p3] - pts_y[p1]) / 6;
+        d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${pts_x[p2].toFixed(1)} ${pts_y[p2].toFixed(1)}`;
+      }
+      return d;
+    };
+
+    const trackPath = catmull(px, py);
+
+    // Area under the track (filled)
+    const areaPath = trackPath + ` L ${px[px.length-1].toFixed(1)} ${(PAD_T + TH).toFixed(1)} L ${px[0].toFixed(1)} ${(PAD_T + TH).toFixed(1)} Z`;
+
+    // ── Position of each participant on track ─────────────────────────────────
+    // Total steps per participant across all history + today
+    const [_sd0, startDt] = (() => {
+      const s = new Date(startIso);
+      return [s, new Date(s.getFullYear(), s.getMonth(), s.getDate())];
+    })();
+
+    // Build cumulative steps per participant from history
+    const cumSteps = {};
+    parts.forEach(p => { cumSteps[p.key] = 0; });
+
+    // Add steps from completed days
+    history.forEach(e => {
+      Object.entries(e.steps || {}).forEach(([k, v]) => {
+        if (cumSteps[k] !== undefined) cumSteps[k] += v;
+      });
+    });
+
+    // Add today's steps (partial, weighted by time of day)
+    const now = new Date();
+    const todayFraction = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400;
+    const todayWeight = Math.min(todayFraction / 0.9, 1); // assume 90% of steps by 21:36
+    parts.forEach(p => {
+      cumSteps[p.key] = (cumSteps[p.key] || 0) + p.steps * todayWeight;
+    });
+
+    // Max steps determines scale
+    const maxCum = Math.max(...Object.values(cumSteps), 1);
+
+    // Position = fraction along track [0..1]
+    const pos = {};
+    parts.forEach(p => { pos[p.key] = Math.min(cumSteps[p.key] / maxCum, 1); });
+
+    // ── Get Y coordinate on catmull-rom at fraction t ─────────────────────────
+    const getTrackY = (t) => {
+      // Find segment
+      const segCount = ctrlX.length - 1;
+      const segT = t * segCount;
+      const seg = Math.min(Math.floor(segT), segCount - 1);
+      const lt = segT - seg;
+
+      const i0 = Math.max(seg - 1, 0);
+      const i1 = seg;
+      const i2 = Math.min(seg + 1, ctrlX.length - 1);
+      const i3 = Math.min(seg + 2, ctrlX.length - 1);
+
+      const cp1x = px[i1] + (px[i2] - px[i0]) / 6;
+      const cp1y = py[i1] + (py[i2] - py[i0]) / 6;
+      const cp2x = px[i2] - (px[i3] - px[i1]) / 6;
+      const cp2y = py[i2] - (py[i3] - py[i1]) / 6;
+
+      // Cubic bezier Y at lt
+      const u = 1 - lt;
+      return u*u*u*py[i1] + 3*u*u*lt*cp1y + 3*u*lt*lt*cp2y + lt*lt*lt*py[i2];
+    };
+
+    const getTrackX = (t) => PAD_L + t * TW;
+
+    // ── Etappen-Markierungen ──────────────────────────────────────────────────
+    let etappenMarkers = '';
+    for (let d = 1; d < total; d++) {
+      const tx = PAD_L + (d / total) * TW;
+      const isElapsed = d <= elapsed;
+      etappenMarkers += `<line x1="${tx.toFixed(1)}" y1="${PAD_T}" x2="${tx.toFixed(1)}" y2="${(PAD_T+TH).toFixed(1)}"
+        stroke="${isElapsed ? '#ffffff18' : '#ffffff08'}" stroke-width="1" stroke-dasharray="3,3"/>`;
+      if (total <= 31 || d % 5 === 0) {
+        etappenMarkers += `<text x="${tx.toFixed(1)}" y="${(PAD_T+TH+12).toFixed(1)}" text-anchor="middle"
+          font-size="7" fill="#6b6b8a">${d}</text>`;
+      }
+    }
+
+    // ── Today marker ──────────────────────────────────────────────────────────
+    const todayX = PAD_L + (Math.min(elapsed, total) / total) * TW;
+    const todayMarker = `<line x1="${todayX.toFixed(1)}" y1="${PAD_T}" x2="${todayX.toFixed(1)}" y2="${(PAD_T+TH).toFixed(1)}"
+      stroke="var(--accent-color,#e94560)" stroke-width="1.5" opacity="0.6"/>`;
+
+    // ── Participant dots ───────────────────────────────────────────────────────
+    // Sort by position descending so leading dot renders on top
+    const sortedParts = [...parts].sort((a,b) => pos[a.key] - pos[b.key]);
+    let dots = '';
+    sortedParts.forEach((p, i) => {
+      const t = pos[p.key];
+      const dx = getTrackX(t);
+      const dy = getTrackY(t);
+      const color = COLORS[parts.indexOf(p) % COLORS.length];
+      const isLeader = i === sortedParts.length - 1;
+      const r = isLeader ? 7 : 5.5;
+
+      // Dot
+      dots += `<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="${r}"
+        fill="${color}" stroke="var(--card-background-color)" stroke-width="1.5"
+        filter="${isLeader ? 'url(#glow)' : ''}"/>`;
+
+      // Name label: alternate above/below to avoid overlap
+      const labelY = i % 2 === 0 ? dy - r - 4 : dy + r + 10;
+      dots += `<text x="${dx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle"
+        font-size="8" font-weight="${isLeader ? 700 : 400}" fill="${color}">${p.name}</text>`;
+    });
+
+    // ── SVG assembly ──────────────────────────────────────────────────────────
+    return `<div class="sec">
+      <div class="sec-label">🗺 Total Steps Race</div>
+      <div class="track-wrap">
+        <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
+             style="width:100%;height:auto;display:block;">
+          <defs>
+            <linearGradient id="trackGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="var(--accent-color,#e94560)" stop-opacity="0.15"/>
+              <stop offset="100%" stop-color="var(--accent-color,#e94560)" stop-opacity="0.03"/>
+            </linearGradient>
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- Area fill under track -->
+          <path d="${areaPath}" fill="url(#trackGrad)"/>
+
+          <!-- Etappen markers -->
+          ${etappenMarkers}
+
+          <!-- Today marker -->
+          ${todayMarker}
+
+          <!-- Track line -->
+          <path d="${trackPath}" fill="none"
+            stroke="var(--accent-color,#e94560)" stroke-width="2.5" stroke-linecap="round"/>
+
+          <!-- Start flag -->
+          <text x="${(PAD_L - 2).toFixed(1)}" y="${(PAD_T + TH + 12).toFixed(1)}"
+            text-anchor="middle" font-size="10">🏁</text>
+
+          <!-- Finish flag -->
+          <text x="${(PAD_L + TW + 2).toFixed(1)}" y="${(PAD_T + TH + 12).toFixed(1)}"
+            text-anchor="middle" font-size="10">🏆</text>
+
+          <!-- Day labels -->
+          <text x="${PAD_L.toFixed(1)}" y="${(PAD_T + TH + 12).toFixed(1)}"
+            text-anchor="middle" font-size="7" fill="#6b6b8a">0</text>
+          <text x="${(PAD_L + TW).toFixed(1)}" y="${(PAD_T + TH + 12).toFixed(1)}"
+            text-anchor="middle" font-size="7" fill="#6b6b8a">${total}</text>
+
+          <!-- Participant dots (on top) -->
+          ${dots}
+        </svg>
+      </div>
+    </div>`;
   }
 
   _table(recent, parts) {
@@ -409,7 +614,17 @@ const CSS = `
   .empty p  { color:var(--secondary-text-color); font-size:.82rem; max-width:280px; margin:0; }
 
   @media(max-width:480px) { .l-bar-wrap { display:none; } }
+
+  .btn-track { background:rgba(255,255,255,.06); color:var(--secondary-text-color); border:1px solid var(--divider-color); }
+  .btn-track-on { background:rgba(233,69,96,.15); color:var(--accent-color,#e94560); border:1px solid var(--accent-color,#e94560); }
+
+  .track-wrap {
+    background: var(--card-background-color);
+    border-radius: 10px;
+    border: 1px solid var(--divider-color);
+    padding: 8px 4px 4px;
+    overflow: hidden;
+  }
 `;
 
 customElements.define('step-challenge-card', StepChallengeCard);
-
