@@ -128,7 +128,13 @@ class DaysElapsedSensor(_Base):
             return 0
         try:
             start = datetime.fromisoformat(self._store.start)
-            elapsed = (datetime.now(start.tzinfo) - start).days
+            now = datetime.now(start.tzinfo)
+            # Count calendar days elapsed (not full 24h periods) so the
+            # value matches the calendar/track view, where "today" is the
+            # current day number regardless of the exact start time.
+            start_date = start.date()
+            now_date = now.date()
+            elapsed = (now_date - start_date).days + 1
             return min(max(elapsed, 0), self._duration())
         except (ValueError, TypeError):
             return 0
