@@ -18,6 +18,7 @@ class StepChallengeCard extends HTMLElement {
     this._unsubFn  = null;         // cleanup handle for event subscription
     this._stateKey = '';           // hash of relevant states for change detection
     this._showTrack = false;       // toggle for race track view
+    this._showToday = false;       // toggle for today's stage zoom
   }
 
   // ── HA lifecycle ─────────────────────────────────────────────────────────
@@ -166,6 +167,7 @@ class StepChallengeCard extends HTMLElement {
         <button class="btn btn-stop"  id="x">⏹ Stop</button>
         <button class="btn btn-rec"   id="r">📋 Record Day</button>
         <button class="btn btn-track ${this._showTrack ? 'btn-track-on' : ''}" id="t">🗺 Route</button>
+        <button class="btn btn-track ${this._showToday ? 'btn-track-on' : ''}" id="td">📍 Heute</button>
       </div>`;
 
     if (status === 'inactive') {
@@ -222,6 +224,7 @@ class StepChallengeCard extends HTMLElement {
 
     if (elapsed > 0 && start) h += this._cal(elapsed, total, parts, history, start);
     if (this._showTrack && elapsed > 0 && start) h += this._raceTrack(elapsed, total, parts, history, start);
+    if (this._showToday && elapsed > 0 && start) h += this._todayStage(elapsed, total, parts, history, start);
     if (history.length > 0)   h += this._table(history.slice(-7).reverse(), parts);
 
     this._paint(h);
@@ -247,6 +250,10 @@ class StepChallengeCard extends HTMLElement {
     this.shadowRoot.getElementById('r')?.addEventListener('click', () => this._call('record_day'));
     this.shadowRoot.getElementById('t')?.addEventListener('click', () => {
       this._showTrack = !this._showTrack;
+      this._render();
+    });
+    this.shadowRoot.getElementById('td')?.addEventListener('click', () => {
+      this._showToday = !this._showToday;
       this._render();
     });
     this.shadowRoot.getElementById('menu-btn')?.addEventListener('click', () => {
@@ -285,6 +292,204 @@ class StepChallengeCard extends HTMLElement {
     return h + `</div></div>`;
   }
 
+
+  _todayStage(elapsed, total, parts, history, startIso) {
+    const W = 800, H = 220, PAD_L = 48, PAD_R = 48, PAD_T = 36, PAD_B = 48;
+    const TW = W - PAD_L - PAD_R;
+    const TH = H - PAD_T - PAD_B;
+
+    // ── Same deterministic terrain as full track ───────────────────────────
+    const seed = (this._name().split('').reduce((a,c)=>a+c.charCodeAt(0),0) + total)|0;
+    const rng  = (i) => { const x = Math.sin(seed+i)*43758.5453; return x-Math.floor(x); };
+
+    // Elevation points for ALL days (same as full track)
+    const allElev = [];
+    allElev.push(0.55);
+    for (let d = 1; d < total; d++) {
+      const mid = Math.abs(d/total - 0.5) < 0.38;
+      allElev.push((mid?0.2:0.55) + rng(d*7)*(mid?0.55:0.3));
+    }
+    allElev.push(0.5);
+
+    // Extract only the current stage segment (elapsed-1 → elapsed)
+    // We need a few extra points for smooth catmull-rom at boundaries
+    const stageStart = elapsed - 1;
+    const stageEnd   = elapsed;
+
+    // Take 2 extra points on each side for smooth spline
+    const iFrom = Math.max(stageStart - 2, 0);
+    const iTo   = Math.min(stageEnd   + 2, total);
+
+    // Map these points to fill the full width PAD_L..PAD_L+TW
+    // The stage itself (stageStart..stageEnd) maps to PAD_L..PAD_L+TW
+    const segCount = iTo - iFrom;
+    const segPx = [];
+    const segPy = [];
+    for (let i = iFrom; i <= iTo; i++) {
+      // X: map i relative to stage boundaries → full width
+      const fracInStage = (i - stageStart); // -2..0..1..3
+      segPx.push(PAD_L + (fracInStage / 1) * TW);
+      segPy.push(PAD_T + allElev[Math.min(i, total)] * TH);
+    }
+
+    // Catmull-rom through segment points
+    const catmull = (xs, ys) => {
+      let d = `M ${xs[0].toFixed(1)} ${ys[0].toFixed(1)}`;
+      for (let i = 0; i < xs.length - 1; i++) {
+        const p0=Math.max(i-1,0), p1=i, p2=i+1, p3=Math.min(i+2,xs.length-1);
+        const cp1x=xs[p1]+(xs[p2]-xs[p0])/6, cp1y=ys[p1]+(ys[p2]-ys[p0])/6;
+        const cp2x=xs[p2]-(xs[p3]-xs[p1])/6, cp2y=ys[p2]-(ys[p3]-ys[p1])/6;
+        d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)},${cp2x.toFixed(1)} ${cp2y.toFixed(1)},${xs[p2].toFixed(1)} ${ys[p2].toFixed(1)}`;
+      }
+      return d;
+    };
+
+    const fullPath = catmull(segPx, segPy);
+
+    // Stage section: only PAD_L to PAD_L+TW (clip extra points)
+    const stageAreaPath = fullPath +
+      ` L ${(PAD_L+TW).toFixed(1)} ${(PAD_T+TH).toFixed(1)}` +
+      ` L ${PAD_L.toFixed(1)} ${(PAD_T+TH).toFixed(1)} Z`;
+
+    // ── Get Y at fraction t along stage (0=start, 1=end) ──────────────────
+    const getY = (t) => {
+      // t maps to index offset from stageStart
+      const fracIdx = t + (stageStart - iFrom); // offset in segPx
+      const seg2  = Math.min(Math.floor(fracIdx), segPx.length-2);
+      const lt    = fracIdx - seg2;
+      const p0=Math.max(seg2-1,0), p1=seg2, p2=Math.min(seg2+1,segPx.length-1), p3=Math.min(seg2+2,segPx.length-1);
+      const cp1y=segPy[p1]+(segPy[p2]-segPy[p0])/6;
+      const cp2y=segPy[p2]-(segPy[p3]-segPy[p1])/6;
+      const u=1-lt;
+      return u*u*u*segPy[p1]+3*u*u*lt*cp1y+3*u*lt*lt*cp2y+lt*lt*lt*segPy[p2];
+    };
+    const getX = (t) => PAD_L + t * TW;
+
+    // ── Time of day ────────────────────────────────────────────────────────
+    const now3 = new Date();
+    const todayFrac = Math.min(
+      (now3.getHours()*3600 + now3.getMinutes()*60 + now3.getSeconds()) / (21*3600), 1
+    );
+    const timeStr = now3.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+
+    // ── Participant positions (0..1 along today's stage) ──────────────────
+    const maxSteps = Math.max(...parts.map(p=>p.steps), 1);
+    const sorted2  = [...parts].sort((a,b) => b.steps - a.steps);
+
+    // ── Background: shade elapsed portion ─────────────────────────────────
+    const elapsedBg = `<rect x="${PAD_L}" y="${PAD_T}"
+      width="${(TW * todayFrac).toFixed(1)}" height="${TH}"
+      fill="rgba(255,255,255,0.03)" rx="4"/>`;
+
+    // Time marker
+    const timeX = PAD_L + todayFrac * TW;
+    const timeLine = `
+      <line x1="${timeX.toFixed(1)}" y1="${PAD_T}" x2="${timeX.toFixed(1)}" y2="${(PAD_T+TH).toFixed(1)}"
+        stroke="rgba(255,255,255,0.3)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="${timeX.toFixed(1)}" y="${(PAD_T-8).toFixed(1)}" text-anchor="middle"
+        font-size="9" fill="rgba(255,255,255,0.5)">${timeStr}</text>`;
+
+    // ── Dots + info rows ───────────────────────────────────────────────────
+    let dots = '', infoRows = '';
+    sorted2.forEach((p, i) => {
+      const stepRatio = p.steps / maxSteps;
+      const t = stepRatio * todayFrac;       // position along stage
+      const dx = getX(t);
+      const dy = getY(t);
+      const color = COLORS[parts.indexOf(p) % COLORS.length];
+      const isLeader = i === 0;
+      const r = isLeader ? 10 : 7;
+      const labelY = i % 2 === 0 ? dy - r - 7 : dy + r + 13;
+
+      dots += `
+        <circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="${r}"
+          fill="${color}" stroke="var(--card-background-color)" stroke-width="2"
+          ${isLeader ? 'filter="url(#glow2)"' : ''}/>
+        <text x="${dx.toFixed(1)}" y="${labelY.toFixed(1)}"
+          text-anchor="${t > 0.8 ? 'end' : t < 0.2 ? 'start' : 'middle'}"
+          font-size="${isLeader ? 10 : 9}" font-weight="${isLeader ? 700 : 400}"
+          fill="${color}">${p.name}</text>`;
+
+      // Progress bar row below SVG
+      const pct = Math.round(stepRatio * 100);
+      infoRows += `
+        <div class="today-row">
+          <div class="today-dot" style="background:${color}"></div>
+          <div class="today-name">${p.name}</div>
+          <div class="today-bar-wrap">
+            <div class="today-bar-fill" style="width:${pct}%;background:${color}"></div>
+          </div>
+          <div class="today-steps">${this._fmt(p.steps)}</div>
+          <div class="today-pct" style="color:${color}">${pct}%</div>
+        </div>`;
+    });
+
+    // Stage label (e.g. "Etappe 6 von 30")
+    const [sy2, sm2, sd2] = startIso.split('T')[0].split('-').map(Number);
+    const stageDate = new Date(sy2, sm2-1, sd2+elapsed-1);
+    const dateStr = stageDate.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+    return `<div class="sec">
+      <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>📍 Stage ${elapsed} of ${total}</span>
+        <span style="font-size:.7rem;color:var(--secondary-text-color)">${dateStr}</span>
+      </div>
+      <div class="track-wrap">
+        <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
+             style="width:100%;height:auto;display:block;overflow:visible">
+          <defs>
+            <linearGradient id="tg2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--accent-color,#e94560)" stop-opacity="0.2"/>
+              <stop offset="100%" stop-color="var(--accent-color,#e94560)" stop-opacity="0.02"/>
+            </linearGradient>
+            <filter id="glow2"><feGaussianBlur stdDeviation="4" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <clipPath id="stageClip">
+              <rect x="${PAD_L}" y="0" width="${TW}" height="${H}"/>
+            </clipPath>
+          </defs>
+
+          <!-- Stage area fill (clipped to stage boundaries) -->
+          <path d="${stageAreaPath}" fill="url(#tg2)" clip-path="url(#stageClip)"/>
+
+          <!-- Elapsed time shading -->
+          ${elapsedBg}
+
+          <!-- Full spline (clipped so only stage segment visible) -->
+          <path d="${fullPath}" fill="none"
+            stroke="var(--accent-color,#e94560)" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round"
+            clip-path="url(#stageClip)"/>
+
+          <!-- Faded continuation lines -->
+          <path d="${fullPath}" fill="none"
+            stroke="var(--accent-color,#e94560)" stroke-width="1.5" opacity="0.2"
+            stroke-dasharray="5,4"/>
+
+          <!-- Start / End markers -->
+          <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${(PAD_T+TH).toFixed(1)}"
+            stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <line x1="${(PAD_L+TW).toFixed(1)}" y1="${PAD_T}" x2="${(PAD_L+TW).toFixed(1)}" y2="${(PAD_T+TH).toFixed(1)}"
+            stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <text x="${PAD_L}" y="${(PAD_T+TH+16).toFixed(1)}" text-anchor="middle" font-size="14">🏁</text>
+          <text x="${(PAD_L+TW).toFixed(1)}" y="${(PAD_T+TH+16).toFixed(1)}" text-anchor="middle" font-size="14">🏁</text>
+          <text x="${PAD_L}" y="${(PAD_T+TH+30).toFixed(1)}" text-anchor="middle"
+            font-size="8" fill="var(--secondary-text-color)">Start</text>
+          <text x="${(PAD_L+TW).toFixed(1)}" y="${(PAD_T+TH+30).toFixed(1)}" text-anchor="middle"
+            font-size="8" fill="var(--secondary-text-color)">Ziel</text>
+
+          <!-- Time marker -->
+          ${timeLine}
+
+          <!-- Participant dots -->
+          ${dots}
+        </svg>
+
+        <!-- Info rows -->
+        <div class="today-info">${infoRows}</div>
+      </div>
+    </div>`;
+  }
 
   _raceTrack(elapsed, total, parts, history, startIso) {
     const W = 800, H = 200, PAD_L = 40, PAD_R = 40, PAD_T = 30, PAD_B = 44;
@@ -609,6 +814,16 @@ const CSS = `
   .empty p  { color:var(--secondary-text-color); font-size:.82rem; max-width:280px; margin:0; }
 
   @media(max-width:480px) { .l-bar-wrap { display:none; } }
+
+  /* Today stage info rows */
+  .today-info { padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 7px; }
+  .today-row { display: flex; align-items: center; gap: 8px; }
+  .today-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .today-name { font-size: .82rem; font-weight: 600; min-width: 60px; flex-shrink: 0; }
+  .today-bar-wrap { flex: 1; height: 8px; background: var(--divider-color); border-radius: 4px; overflow: hidden; }
+  .today-bar-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+  .today-steps { font-size: .78rem; color: var(--secondary-text-color); min-width: 52px; text-align: right; flex-shrink: 0; }
+  .today-pct   { font-size: .75rem; font-weight: 700; min-width: 36px; text-align: right; flex-shrink: 0; }
 
   .btn-track { background:rgba(255,255,255,.06); color:var(--secondary-text-color); border:1px solid var(--divider-color); }
   .btn-track-on { background:rgba(233,69,96,.15); color:var(--accent-color,#e94560); border:1px solid var(--accent-color,#e94560); }
