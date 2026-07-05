@@ -19,6 +19,7 @@ class StepChallengeCard extends HTMLElement {
     this._stateKey = '';           // hash of relevant states for change detection
     this._showTrack = false;       // toggle for race track view
     this._showToday = false;       // toggle for today's stage zoom
+    this._tableRows  = 7;            // configurable number of recent stages rows
   }
 
   // ── HA lifecycle ─────────────────────────────────────────────────────────
@@ -225,7 +226,7 @@ class StepChallengeCard extends HTMLElement {
     if (elapsed > 0 && start) h += this._cal(elapsed, total, parts, history, start);
     if (this._showTrack && elapsed > 0 && start) h += this._raceTrack(elapsed, total, parts, history, start);
     if (this._showToday && elapsed > 0 && start) h += this._todayStage(elapsed, total, parts, history, start);
-    if (history.length > 0)   h += this._table(history.slice(-7).reverse(), parts);
+    if (history.length > 0)   h += this._table(history.slice(-this._tableRows).reverse(), parts);
 
     this._paint(h);
     this._bind();
@@ -254,6 +255,19 @@ class StepChallengeCard extends HTMLElement {
     });
     this.shadowRoot.getElementById('td')?.addEventListener('click', () => {
       this._showToday = !this._showToday;
+      this._render();
+    });
+    const total2 = this._history().length;
+    this.shadowRoot.getElementById('rows-less')?.addEventListener('click', () => {
+      this._tableRows = Math.max(1, this._tableRows - 7);
+      this._render();
+    });
+    this.shadowRoot.getElementById('rows-more')?.addEventListener('click', () => {
+      this._tableRows = Math.min(total2, this._tableRows + 7);
+      this._render();
+    });
+    this.shadowRoot.getElementById('rows-all')?.addEventListener('click', () => {
+      this._tableRows = total2;
       this._render();
     });
     this.shadowRoot.getElementById('menu-btn')?.addEventListener('click', () => {
@@ -684,7 +698,19 @@ class StepChallengeCard extends HTMLElement {
   }
 
   _table(recent, parts) {
-    let h = `<div class="sec"><div class="sec-label">📊 Recent Stages</div>
+    const total = this._history().length;
+    let h = `<div class="sec">
+      <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>📊 Recent Stages</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button class="row-btn" id="rows-less" ${this._tableRows <= 1 ? 'disabled' : ''}>−</button>
+          <span style="font-size:.75rem;color:var(--secondary-text-color);min-width:80px;text-align:center">
+            ${Math.min(this._tableRows, total)} / ${total}
+          </span>
+          <button class="row-btn" id="rows-more" ${this._tableRows >= total ? 'disabled' : ''}>+</button>
+          <button class="row-btn" id="rows-all"  ${this._tableRows >= total ? 'disabled' : ''}>All</button>
+        </div>
+      </div>
       <table><thead><tr><th>#</th><th>Date</th><th>Winner</th>`;
     parts.forEach(p => { h += `<th>${p.name}</th>`; });
     h += `</tr></thead><tbody>`;
@@ -816,6 +842,12 @@ const CSS = `
   @media(max-width:480px) { .l-bar-wrap { display:none; } }
 
   /* Today stage info rows */
+  .row-btn { background:rgba(255,255,255,.08); border:1px solid var(--divider-color);
+    border-radius:6px; color:var(--primary-text-color); font-size:.78rem; font-weight:600;
+    cursor:pointer; padding:2px 8px; font-family:inherit; }
+  .row-btn:hover:not([disabled]) { background:rgba(255,255,255,.15); }
+  .row-btn[disabled] { opacity:.35; cursor:default; }
+
   .today-info { padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 7px; }
   .today-row { display: flex; align-items: center; gap: 8px; }
   .today-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
