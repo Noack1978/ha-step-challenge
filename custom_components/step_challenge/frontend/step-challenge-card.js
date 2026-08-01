@@ -27,6 +27,7 @@ class StepChallengeCard extends HTMLElement {
     this._addingPart  = false;
     // Debounce service calls
     this._lastCall    = null;
+    this._lastStateKey = '';
   }
 
   // ── HA lifecycle ───────────────────────────────────────────────────────────
@@ -43,7 +44,16 @@ class StepChallengeCard extends HTMLElement {
     if (!this._initialized) {
       this._buildDOM();
       this._initialized = true;
+      this._updateAll();
+      return;
     }
+    // Only re-render when step_challenge states changed (last_updated covers attribute changes)
+    const key = Object.values(hass.states)
+      .filter(s => s.entity_id.includes('step_challenge'))
+      .map(s => s.entity_id + ':' + s.last_updated)
+      .sort().join('|');
+    if (key === this._lastStateKey) return;
+    this._lastStateKey = key;
     this._updateAll();
   }
 
@@ -147,7 +157,10 @@ class StepChallengeCard extends HTMLElement {
       this._updateTrackViews();
     });
 
-    root.getElementById('btn-rec').addEventListener('click', () => this._call('record_day'));
+    root.getElementById('btn-rec').addEventListener('click', () => {
+      if (!this._hass) return;
+      this._hass.callService(SC, 'record_day', {});
+    });
 
     root.getElementById('rows-less').addEventListener('click', () => {
       this._tableRows = Math.max(1, this._tableRows - 7); this._updateTable();
@@ -170,7 +183,7 @@ class StepChallengeCard extends HTMLElement {
   _pct()       { return parseInt(this._find('days_elapsed')?.attributes?.progress_pct)||0; }
   _start()     { return this._find('days_elapsed')?.attributes?.start_date||null; }
   _history()   { return this._find('_status')?.attributes?.history||[]; }
-  _archive()   { return (this._find('_status')?.attributes?.archive||[]).slice().reverse(); }
+  _archive()   { return (this._find('_archive')?.attributes?.challenges||[]).slice().reverse(); }
   _recTime()   { return this._find('_status')?.attributes?.record_time||'23:00:00'; }
 
   _name() {
