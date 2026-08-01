@@ -16,6 +16,7 @@ import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
 
 from .archive import ChallengeArchive
+from .coordinator import StepChallengeCoordinator
 from .const import (
     CARD_FILE,
     CONF_CHALLENGE_NAME,
@@ -63,8 +64,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await store.async_load()
     await archive.async_load()
 
+    coordinator = StepChallengeCoordinator(hass, store, archive)
+    await coordinator.async_config_entry_first_refresh()
+
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"store": store, "archive": archive}
+    hass.data[DOMAIN][entry.entry_id] = {"store": store, "archive": archive, "coordinator": coordinator}
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -151,6 +155,13 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
     def _archive(entry_id: str) -> ChallengeArchive:
         return hass.data[DOMAIN][entry_id]["archive"]
 
+    def _coordinator(entry_id: str) -> StepChallengeCoordinator:
+        return hass.data[DOMAIN][entry_id]["coordinator"]
+
+    def _refresh_all() -> None:
+        for eid in _entry_ids():
+            _coordinator(eid).async_force_refresh()
+
     def _participants(entry_id: str) -> list[dict]:
         e = hass.config_entries.async_get_entry(entry_id)
         return e.options.get(CONF_PARTICIPANTS, e.data.get(CONF_PARTICIPANTS, []))
@@ -183,6 +194,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             )
             await store.async_save()
         hass.bus.async_fire(f"{DOMAIN}_started")
+        _refresh_all()
         _LOGGER.info("Step Challenge started")
 
     async def _stop(call: ServiceCall) -> None:
@@ -190,6 +202,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             _store(entry_id).stop()
             await _store(entry_id).async_save()
         hass.bus.async_fire(f"{DOMAIN}_stopped")
+        _refresh_all()
 
     async def _record_day(call: ServiceCall) -> None:
         for entry_id in _entry_ids():
@@ -235,12 +248,14 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             _LOGGER.info("Step Challenge: winner %s (%s steps)", winner_name, steps[winner_key])
 
         hass.bus.async_fire(f"{DOMAIN}_data_updated")
+        _refresh_all()
 
     async def _archive_challenge(call: ServiceCall) -> None:
         """Manually archive current challenge."""
         for entry_id in _entry_ids():
             await _do_archive(entry_id)
         hass.bus.async_fire(f"{DOMAIN}_archived")
+        _refresh_all()
         _LOGGER.info("Step Challenge: manually archived")
 
     async def _delete_archive(call: ServiceCall) -> None:
@@ -250,6 +265,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             deleted = await _archive(entry_id).async_delete(ids)
             _LOGGER.info("Step Challenge: deleted %d archive entries", deleted)
         hass.bus.async_fire(f"{DOMAIN}_archive_updated")
+        _refresh_all()
 
     async def _update_settings(call: ServiceCall) -> None:
         """Update challenge settings (name, duration, record_time) from panel."""
@@ -268,6 +284,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
         hass.config_entries.async_update_entry(entry_obj, options=current)
         hass.bus.async_fire(f"{DOMAIN}_settings_updated", current)
+        _refresh_all()
         _LOGGER.info("Step Challenge: settings updated via panel")
 
     # Register all services
@@ -291,6 +308,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             current[CONF_PARTICIPANTS] = parts
             hass.config_entries.async_update_entry(e, options=current)
             hass.bus.async_fire(f"{DOMAIN}_participants_updated")
+            _refresh_all()
             _LOGGER.info("Step Challenge: added participant '%s'", name)
 
     async def _remove_participant(call: ServiceCall) -> None:
@@ -305,6 +323,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             current[CONF_PARTICIPANTS] = parts
             hass.config_entries.async_update_entry(e, options=current)
             hass.bus.async_fire(f"{DOMAIN}_participants_updated")
+            _refresh_all()
             _LOGGER.info("Step Challenge: removed participant '%s'", key)
 
     svc_map = {

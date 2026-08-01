@@ -1,4 +1,4 @@
-"""Sensor platform for Step Challenge."""
+"""Sensors for Step Challenge."""
 from __future__ import annotations
 
 import logging
@@ -6,11 +6,21 @@ from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback, callback
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_CHALLENGE_NAME, CONF_DURATION_DAYS, CONF_PARTICIPANTS, DOMAIN
-from .storage import ChallengeStore
+from .const import (
+    CONF_CHALLENGE_NAME,
+    CONF_DURATION_DAYS,
+    CONF_PARTICIPANTS,
+    CONF_RECORD_TIME,
+    DEFAULT_DURATION_DAYS,
+    DEFAULT_RECORD_TIME,
+    DOMAIN,
+)
+from .coordinator import StepChallengeCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,204 +30,192 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    coordinator: StepChallengeCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     participants = entry.options.get(
         CONF_PARTICIPANTS, entry.data.get(CONF_PARTICIPANTS, [])
     )
-    entities: list[SensorEntity] = (
-        [StageWinSensor(hass, entry, p) for p in participants]
-        + [
-            DaysElapsedSensor(hass, entry),
-            ChallengeStatusSensor(hass, entry),
-            LeaderSensor(hass, entry, participants),
-        ]
+
+    entities: list[SensorEntity] = [
+        StageSensor(coordinator, entry, p) for p in participants
+    ]
+    entities.append(DaysElapsedSensor(coordinator, entry))
+    entities.append(ChallengeStatusSensor(coordinator, entry))
+    entities.append(LeaderSensor(coordinator, entry))
+    async_add_entities(entities)
+
+
+def _device(entry: ConfigEntry) -> DeviceInfo:
+    name = entry.options.get(
+        CONF_CHALLENGE_NAME, entry.data.get(CONF_CHALLENGE_NAME, "Step Challenge")
     )
-    async_add_entities(entities, True)
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=name,
+        manufacturer="Noack1978",
+        model="Step Challenge",
+    )
 
 
-# ── Base ──────────────────────────────────────────────────────────────────────
+# ── Stage Win Sensor ──────────────────────────────────────────────────────────
 
-class _Base(SensorEntity):
+class StageSensor(CoordinatorEntity[StepChallengeCoordinator], SensorEntity):
+    _attr_state_class     = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "stages"
     _attr_has_entity_name = True
-    _attr_should_poll = False
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        self.hass = hass
+    def __init__(self, coordinator, entry, participant):
+        super().__init__(coordinator)
+        self._entry       = entry
+        self._participant = participant
+        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_stages_{participant['key']}"
+        self._attr_name      = f"{participant['name']} Stage Wins"
+        self._attr_device_info = _device(entry)
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.data.get("scores", {}).get(self._participant["key"], 0)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        history = self.coordinator.data.get("history", [])
+        won = [e["date"] for e in history if e.get("winner") == self._participant["key"]]
+        return {
+            "participant_key": self._participant["key"],
+            "step_entity":     self._participant.get("entity", ""),
+            "won_dates":       won,
+        }
+
+
+# ── Days Elapsed Sensor ───────────────────────────────────────────────────────
+
+class DaysElapsedSensor(CoordinatorEntity[StepChallengeCoordinator], SensorEntity):
+    _attr_state_class     = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "days"
+    _attr_has_entity_name = True
+    _attr_name            = "Days Elapsed"
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator)
         self._entry = entry
+        self._attr_unique_id   = f"{DOMAIN}_{entry.entry_id}_days_elapsed"
+        self._attr_device_info = _device(entry)
+
+    def _duration(self) -> int:
+        return int(self._entry.options.get(
+            CONF_DURATION_DAYS,
+            self._entry.data.get(CONF_DURATION_DAYS, DEFAULT_DURATION_DAYS),
+        ))
 
     @property
-    def _store(self) -> ChallengeStore:
-        return self.hass.data[DOMAIN][self._entry.entry_id]["store"]
+    def native_value(self) -> int:
+        start_iso = self.coordinator.data.get("start")
+        if not start_iso:
+            return 0
+        try:
+            start = datetime.fromisoformat(start_iso)
+            now   = datetime.now(start.tzinfo)
+            start_date = start.date()
+            now_date   = now.date()
+            elapsed = (now_date - start_date).days + 1
+            return min(max(elapsed, 0), self._duration())
+        except Exception:
+            return 0
 
     @property
-    def device_info(self) -> dict:
-        name = self._entry.options.get(
+    def extra_state_attributes(self) -> dict:
+        start_iso = self.coordinator.data.get("start")
+        elapsed   = self.native_value
+        duration  = self._duration()
+        pct = min(round((elapsed / duration) * 100), 100) if duration else 0
+        return {
+            "start_date":    start_iso,
+            "duration_days": duration,
+            "progress_pct":  pct,
+        }
+
+
+# ── Status Sensor ─────────────────────────────────────────────────────────────
+
+class ChallengeStatusSensor(CoordinatorEntity[StepChallengeCoordinator], SensorEntity):
+    _attr_has_entity_name = True
+    _attr_name            = "Status"
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id   = f"{DOMAIN}_{entry.entry_id}_status"
+        self._attr_device_info = _device(entry)
+
+    def _challenge_name(self) -> str:
+        return self._entry.options.get(
             CONF_CHALLENGE_NAME,
             self._entry.data.get(CONF_CHALLENGE_NAME, "Step Challenge"),
         )
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": name,
-            "manufacturer": "Step Challenge",
-            "model": "Step Challenge",
-        }
-
-    async def async_added_to_hass(self) -> None:
-        for event in (
-            f"{DOMAIN}_data_updated",
-            f"{DOMAIN}_started",
-            f"{DOMAIN}_stopped",
-        ):
-            self.async_on_remove(
-                self.hass.bus.async_listen(event, self._refresh)
-            )
-
-    @callback
-    def _refresh(self, _event=None) -> None:
-        self.async_write_ha_state()
-
-
-# ── Stage wins per participant ────────────────────────────────────────────────
-
-class StageWinSensor(_Base):
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, participant: dict) -> None:
-        super().__init__(hass, entry)
-        self._p = participant
-        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_stages_{participant['key']}"
-        self._attr_name = f"{participant['name']} Stage Wins"
-        self._attr_icon = "mdi:podium-gold"
-        # MEASUREMENT because scores can be reset when a new challenge starts
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = "stages"
-
-    @property
-    def native_value(self) -> int:
-        return self._store.scores.get(self._p["key"], 0)
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        won = [h["date"] for h in self._store.history if h.get("winner") == self._p["key"]]
-        return {
-            "participant_key": self._p["key"],
-            "step_entity": self._p["entity"],
-            "won_dates": won,
-        }
-
-
-# ── Days elapsed ──────────────────────────────────────────────────────────────
-
-class DaysElapsedSensor(_Base):
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        super().__init__(hass, entry)
-        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_days_elapsed"
-        self._attr_name = "Days Elapsed"
-        self._attr_icon = "mdi:calendar-clock"
-        self._attr_native_unit_of_measurement = "days"
-        self._attr_state_class = SensorStateClass.MEASUREMENT
 
     def _duration(self) -> int:
-        return int(
-            self._entry.options.get(
-                CONF_DURATION_DAYS,
-                self._entry.data.get(CONF_DURATION_DAYS, 30),
-            )
+        return int(self._entry.options.get(
+            CONF_DURATION_DAYS,
+            self._entry.data.get(CONF_DURATION_DAYS, DEFAULT_DURATION_DAYS),
+        ))
+
+    def _record_time(self) -> str:
+        return self._entry.options.get(
+            CONF_RECORD_TIME,
+            self._entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME),
         )
 
     @property
-    def native_value(self) -> int:
-        if not self._store.start:
-            return 0
-        try:
-            start = datetime.fromisoformat(self._store.start)
-            now = datetime.now(start.tzinfo)
-            # Count calendar days elapsed (not full 24h periods) so the
-            # value matches the calendar/track view, where "today" is the
-            # current day number regardless of the exact start time.
-            start_date = start.date()
-            now_date = now.date()
-            elapsed = (now_date - start_date).days + 1
-            return min(max(elapsed, 0), self._duration())
-        except (ValueError, TypeError):
-            return 0
-
-    @property
-    def extra_state_attributes(self) -> dict:
+    def native_value(self) -> str:
+        if not self.coordinator.data.get("active"):
+            return "inactive"
+        elapsed  = 0
+        start_iso = self.coordinator.data.get("start")
+        if start_iso:
+            try:
+                start = datetime.fromisoformat(start_iso)
+                now   = datetime.now(start.tzinfo)
+                elapsed = (now.date() - start.date()).days + 1
+            except Exception:
+                pass
         duration = self._duration()
-        elapsed = self.native_value
-        return {
-            "duration_days": duration,
-            "days_remaining": max(0, duration - elapsed),
-            "progress_pct": round((elapsed / duration) * 100) if duration else 0,
-            "start_date": self._store.start,
-        }
-
-
-# ── Status ────────────────────────────────────────────────────────────────────
-
-class ChallengeStatusSensor(_Base):
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        super().__init__(hass, entry)
-        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_status"
-        self._attr_name = "Status"
-        self._attr_icon = "mdi:flag-checkered"
-
-    @property
-    def native_value(self) -> str:
-        if not self._store.active or not self._store.start:
-            return "inactive"
-        try:
-            start = datetime.fromisoformat(self._store.start)
-            elapsed = (datetime.now(start.tzinfo) - start).days
-            duration = int(
-                self._entry.options.get(
-                    CONF_DURATION_DAYS,
-                    self._entry.data.get(CONF_DURATION_DAYS, 30),
-                )
-            )
-            return "finished" if elapsed >= duration else "active"
-        except (ValueError, TypeError):
-            return "inactive"
+        return "finished" if elapsed > duration else "active"
 
     @property
     def extra_state_attributes(self) -> dict:
-        # Import archive here to avoid circular imports
-        from .archive import ChallengeArchive
-        archive_data = []
-        try:
-            arch = self.hass.data.get("step_challenge", {}).get(self._entry.entry_id, {}).get("archive")
-            if arch:
-                archive_data = arch.challenges
-        except Exception:
-            pass
+        data = self.coordinator.data
         return {
-            "start": self._store.start,
-            "stages_recorded": len(self._store.history),
-            "history": self._store.history,
-            "archive": archive_data,
+            "friendly_name": self._challenge_name(),
+            "record_time":   self._record_time(),
+            "stages_recorded": len(data.get("history", [])),
+            "history":       data.get("history", []),
+            "archive":       data.get("archive", []),
         }
 
 
-# ── Leader ────────────────────────────────────────────────────────────────────
+# ── Leader Sensor ─────────────────────────────────────────────────────────────
 
-class LeaderSensor(_Base):
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, participants: list[dict]) -> None:
-        super().__init__(hass, entry)
-        self._participants = participants
-        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_leader"
-        self._attr_name = "Current Leader"
-        self._attr_icon = "mdi:trophy"
+class LeaderSensor(CoordinatorEntity[StepChallengeCoordinator], SensorEntity):
+    _attr_has_entity_name = True
+    _attr_name            = "Leader"
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id   = f"{DOMAIN}_{entry.entry_id}_leader"
+        self._attr_device_info = _device(entry)
 
     @property
-    def native_value(self) -> str:
-        scores = self._store.scores
-        if not scores or all(v == 0 for v in scores.values()):
-            return "—"
-        best = max(scores, key=lambda k: scores[k])
-        p = next((p for p in self._participants if p["key"] == best), None)
-        return p["name"] if p else best
+    def native_value(self) -> str | None:
+        scores = self.coordinator.data.get("scores", {})
+        if not scores:
+            return None
+        key = max(scores, key=lambda k: scores[k])
+        participants = self._entry.options.get(
+            CONF_PARTICIPANTS, self._entry.data.get(CONF_PARTICIPANTS, [])
+        )
+        p = next((p for p in participants if p["key"] == key), None)
+        return p["name"] if p else key
 
     @property
     def extra_state_attributes(self) -> dict:
-        scores = self._store.scores
-        return {
-            "scores": {p["name"]: scores.get(p["key"], 0) for p in self._participants}
-        }
+        return {"scores": self.coordinator.data.get("scores", {})}
