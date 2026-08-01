@@ -13,3 +13,33 @@ record_day:
   description: >
     Evaluate today's step counts, determine the stage winner, and update scores.
     Called automatically at 00:01 by the managed automation – can also be triggered manually.
+
+archive_challenge:
+  name: Archive Challenge
+  description: >
+    Manually archive the current challenge. The challenge data is saved to the
+    archive and the current challenge remains unchanged.
+
+delete_archive_entries:
+  name: Delete Archive Entries
+  description: >
+    Delete specific challenges from the archive by their ID.
+  fields:
+    ids:
+      description: List of archive entry IDs to delete.
+      example: ["20240101120000", "20240201120000"]
+
+update_settings:
+  name: Update Settings
+  description: >
+    Update challenge settings (name, duration, record time) directly from the panel.
+  fields:
+    challenge_name:
+      description: New challenge name.
+      example: "Summer Challenge"
+    duration_days:
+      description: New duration in days.
+      example: 30
+    record_time:
+      description: New daily evaluation time (HH:MM:SS).
+      example: "23:00:00"
