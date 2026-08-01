@@ -11,18 +11,21 @@
 
 ### Was es tut
 
-**ha-step-challenge** verwandelt tägliche Schrittzahlen in ein visuelles Rennen. Jeden Tag gewinnt der Teilnehmer mit den meisten Schritten eine Etappe. Etappensiege summieren sich über die Challenge-Dauer und werden als animiertes Rennen in einer Custom Lovelace Card dargestellt.
+**ha-step-challenge** verwandelt tägliche Schrittzahlen in ein visuelles Rennen. Jeden Tag gewinnt der Teilnehmer mit den meisten Schritten eine Etappe. Etappensiege summieren sich über die Challenge-Dauer und werden als animiertes Rennen in einem nativen HA-Panel dargestellt – ohne iframe, ohne Token.
 
 **Alles wird automatisch eingerichtet** – keine Helfer, Automationen oder YAML-Änderungen nötig.
 
 ### Funktionen
 
-- **Kein manueller Aufwand** nach der Installation: Lovelace-Ressource, Sidebar-Panel und Sensoren werden automatisch erstellt
-- Unbegrenzte Teilnehmeranzahl – jederzeit über *Einstellungen → Geräte & Dienste → Step Challenge → Konfigurieren* ändern
+- **Kein manueller Aufwand** nach der Installation: Panel und Sensoren werden automatisch erstellt
+- Unbegrenzte Teilnehmeranzahl – über *Einstellungen → Geräte & Dienste → Step Challenge → Konfigurieren* verwalten
 - Jeder Teilnehmer wird mit einem beliebigen Schritt-Sensor verknüpft (Google Fit, Apple Health, Fitbit, Samsung Health, …)
-- Animierte Rennkarte mit Fortschrittsbalken, Etappenkalender und Ergebnistabelle
-- Start / Stop / Etappe werten direkt in der Karte
-- Vier Sensoren: Etappensiege je Teilnehmer, vergangene Tage, Status, aktueller Führender
+- Animiertes Rennpanel in der Seitenleiste mit Fortschrittsbalken, Etappenkalender und Ergebnistabelle
+- **Gesamtstrecken-Ansicht** (🗺 Route) – Tour-de-France-ähnliches Höhenprofil mit allen Etappen
+- **Tagesetappen-Ansicht** (📍 Heute) – Zoom auf die aktuelle Etappe mit Echtzeit-Fortschritt
+- **⚙️ Einstellungen direkt im Panel** – Challenge-Name, Dauer und Auswertungszeit ohne Umweg über die Integrationsseite ändern
+- **📦 Archiv** – abgeschlossene Challenges werden automatisch archiviert und können im Panel verwaltet werden
+- Konfigurierbare Anzahl der angezeigten Etappen in der Ergebnistabelle (−/+/Alle)
 - Alle Daten in HA `.storage` gespeichert – kein externer Dienst oder Datenbank nötig
 
 ### Installation
@@ -37,28 +40,47 @@ Via HACS: Benutzerdefiniertes Repository `https://github.com/Noack1978/ha-step-c
 4. Bei Aufforderung neu starten
 
 Die Integration richtet automatisch ein:
-- Die Custom Card `custom:step-challenge-card` als Lovelace-Ressource
 - Das Rennpanel in der Seitenleiste unter „Step Challenge"
 - Sensoren für jeden Teilnehmer und die Challenge insgesamt
 
-Nach der Einrichtung erscheint eine Benachrichtigung in HA mit dem Link zum Blueprint für die tägliche Auswertung. Den Blueprint einmalig importieren unter *Einstellungen → Automationen → Blueprints → Blueprint importieren*.
+Nach der Einrichtung erscheint eine Benachrichtigung mit dem Blueprint-Link. Den Blueprint einmalig importieren unter *Einstellungen → Automationen → Blueprints → Blueprint importieren*.
 
 ### Teilnehmer verwalten
 
-Jederzeit über **Einstellungen → Geräte & Dienste → Step Challenge → Konfigurieren**:
+Über **Einstellungen → Geräte & Dienste → Step Challenge → Konfigurieren**:
 - ➕ Teilnehmer hinzufügen
 - ➖ Teilnehmer entfernen
 - ⚙️ Challenge-Name, Dauer oder Auswertungszeit ändern
 
-### Challenge starten
+### Einstellungen im Panel
 
-**Start**-Button in der Rennkarte, oder den Dienst `step_challenge.start` aufrufen.
+Über den **⚙️-Button** oben rechts im Panel:
+- Challenge-Name, Dauer und Auswertungszeit direkt anpassen
+- Einstellungen werden beim Start einer neuen Challenge übernommen
+- Laufende Challenge stoppen (mit optionalem Archivieren)
+- Neue Challenge starten
 
-### Das Rennpanel anzeigen
+### Challenge-Ablauf
+
+1. ⚙️ Einstellungen öffnen → Name, Dauer, Auswertungszeit festlegen
+2. „Neue Challenge starten" → vorherige Challenge wird automatisch archiviert
+3. Tägliche Auswertung läuft automatisch über den Blueprint
+4. Am Ende: Challenge stoppen → Dialog fragt ob archivieren
+
+### Archiv
+
+Abgeschlossene Challenges werden automatisch archiviert wenn eine neue gestartet wird. Beim Stoppen wird gefragt ob archiviert werden soll.
+
+Im ⚙️-Overlay → Archiv anzeigen:
+- Liste aller vergangenen Challenges mit Name, Zeitraum, Gewinner und Etappensiegen
+- Einzelne Einträge per Checkbox auswählen und löschen
+- Ab 10 Archiv-Einträgen erscheint eine Erinnerung zur Bereinigung
+
+### Das Rennpanel
 
 Das Panel erscheint automatisch in der **Seitenleiste** unter „Step Challenge".
 
-Die Karte lässt sich außerdem in jedes Dashboard einfügen:
+Alternativ in einem Dashboard einbinden:
 
 ```yaml
 type: custom:step-challenge-card
@@ -68,9 +90,12 @@ type: custom:step-challenge-card
 
 | Dienst | Beschreibung |
 |---|---|
-| `step_challenge.start` | Challenge starten (oder neu starten), alle Punkte zurücksetzen |
-| `step_challenge.stop` | Challenge vorzeitig beenden |
+| `step_challenge.start` | Neue Challenge starten (archiviert vorherige automatisch) |
+| `step_challenge.stop` | Challenge beenden |
 | `step_challenge.record_day` | Heutigen Tagessieger manuell eintragen |
+| `step_challenge.archive_challenge` | Aktuelle Challenge manuell ins Archiv |
+| `step_challenge.delete_archive_entries` | Archiv-Einträge per ID löschen |
+| `step_challenge.update_settings` | Einstellungen per Service aktualisieren |
 
 ---
 
@@ -78,18 +103,21 @@ type: custom:step-challenge-card
 
 ### What it does
 
-**ha-step-challenge** turns daily step counts into a visual race. The participant with the most steps each day wins a stage. Stages accumulate over the full challenge duration and are displayed as an animated race in a custom Lovelace card.
+**ha-step-challenge** turns daily step counts into a visual race. The participant with the most steps each day wins a stage. Stages accumulate over the full challenge duration and are displayed as an animated race in a native HA panel – no iframe, no token required.
 
 **Everything is set up automatically** – no helpers, automations, or YAML edits required.
 
 ### Features
 
-- **Zero manual setup** after installation: Lovelace resource, sidebar panel, and sensors are created automatically
-- Unlimited participants – add or remove them at any time via *Settings → Devices & Services → Step Challenge → Configure*
+- **Zero manual setup** after installation: panel and sensors are created automatically
+- Unlimited participants – manage via *Settings → Devices & Services → Step Challenge → Configure*
 - Each participant links to any step-count sensor (Google Fit, Apple Health, Fitbit, Samsung Health, …)
-- Animated race card with progress bars, stage calendar, and results table
-- Control buttons (Start / Stop / Record Day) directly in the card
-- Four sensors: stage wins per participant, days elapsed, status, current leader
+- Animated race panel in the sidebar with progress bars, stage calendar, and results table
+- **Total race view** (🗺 Route) – Tour de France-style elevation profile across all stages
+- **Today's stage view** (📍 Today) – zoomed view of the current stage with real-time progress
+- **⚙️ Settings directly in the panel** – change name, duration and evaluation time without navigating to the integration page
+- **📦 Archive** – completed challenges are automatically archived and can be managed in the panel
+- Configurable number of rows in the results table (−/+/All)
 - All data stored in HA `.storage` – no external service or database required
 
 ### Installation
@@ -104,28 +132,47 @@ Via HACS: Add custom repository `https://github.com/Noack1978/ha-step-challenge`
 4. Restart if prompted
 
 The integration automatically:
-- Registers the `custom:step-challenge-card` as a Lovelace resource
 - Adds the race panel to the sidebar under "Step Challenge"
 - Creates sensors for each participant and the overall challenge
 
-After setup, a notification appears in HA with a link to the daily evaluation blueprint. Import it once via *Settings → Automations → Blueprints → Import Blueprint*.
+After setup, a notification appears with a blueprint link. Import it once via *Settings → Automations → Blueprints → Import Blueprint*.
 
 ### Managing participants
 
-Go to **Settings → Devices & Services → Step Challenge → Configure** at any time to:
-- ➕ Add a new participant
+Via **Settings → Devices & Services → Step Challenge → Configure**:
+- ➕ Add a participant
 - ➖ Remove a participant
-- ⚙️ Change the challenge name, duration, or evaluation time
+- ⚙️ Change name, duration or evaluation time
 
-### Starting a challenge
+### Settings in the panel
 
-Use the **Start** button in the race card, or call the service `step_challenge.start`.
+Via the **⚙️ button** in the top right of the panel:
+- Change challenge name, duration and evaluation time directly
+- Settings are applied when a new challenge is started
+- Stop the running challenge (with optional archiving)
+- Start a new challenge
 
-### Displaying the race panel
+### Challenge workflow
+
+1. Open ⚙️ settings → set name, duration, evaluation time
+2. "Start new challenge" → previous challenge is automatically archived
+3. Daily evaluation runs automatically via the blueprint
+4. At the end: stop challenge → dialog asks whether to archive
+
+### Archive
+
+Completed challenges are automatically archived when a new one is started. When stopping, you are asked whether to archive.
+
+In the ⚙️ overlay → Show archive:
+- List of all past challenges with name, period, winner and stage wins per participant
+- Select entries via checkbox and delete them
+- A cleanup reminder appears after 10 archive entries
+
+### The race panel
 
 The panel is automatically added to the **sidebar** under "Step Challenge".
 
-The card can also be added to any dashboard:
+Alternatively, embed it in any dashboard:
 
 ```yaml
 type: custom:step-challenge-card
@@ -135,9 +182,12 @@ type: custom:step-challenge-card
 
 | Service | Description |
 |---|---|
-| `step_challenge.start` | Start (or restart) the challenge, reset all scores |
-| `step_challenge.stop` | Stop the challenge early |
+| `step_challenge.start` | Start a new challenge (auto-archives the previous one) |
+| `step_challenge.stop` | Stop the challenge |
 | `step_challenge.record_day` | Manually record today's stage winner |
+| `step_challenge.archive_challenge` | Manually archive the current challenge |
+| `step_challenge.delete_archive_entries` | Delete archive entries by ID |
+| `step_challenge.update_settings` | Update settings via service |
 
 ---
 
