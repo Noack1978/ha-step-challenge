@@ -150,9 +150,20 @@ class StepChallengeCard extends HTMLElement {
 
   async _loadArchive() {
     try {
-      const t = this._hass?.auth?.data?.access_token || '';
+      // Get token from HA connection (works in custom element context)
+      let token = '';
+      try {
+        const conn = await window.hassConnection;
+        token = conn?.options?.token || conn?.options?.accessToken || '';
+      } catch(e) {}
+      if (!token) {
+        // Fallback: try auth object on hass
+        token = this._hass?.auth?.data?.access_token
+             || this._hass?.connection?.options?.token
+             || '';
+      }
       const r = await fetch(`${location.origin}/api/storage/step_challenge.archive`,
-        { headers: { Authorization: `Bearer ${t}` } });
+        { headers: { Authorization: `Bearer ${token}` } });
       if (r.ok) {
         const d = await r.json();
         this._archive = (d?.challenges || []).slice().reverse(); // newest first
@@ -163,16 +174,16 @@ class StepChallengeCard extends HTMLElement {
   // ── Settings overlay ───────────────────────────────────────────────────────
 
   _renderOverlay() {
-    const entry = Object.values(this._hass?.states || {}).find(s =>
-      s.entity_id.includes('step_challenge') && s.entity_id.includes('_status')
-    );
-    const name = this._name();
-    const total = this._total();
-    const recTime = entry?.attributes?.record_time || '23:00:00';
-
     if (this._showArchive) return this._renderArchiveView();
 
+    const name    = this._name();
+    const total   = this._total();
+    const status  = this._status();
+    // Get record_time from status sensor attribute or fallback
+    const statusEnt = this._find('_status');
+    const recTime = statusEnt?.attributes?.record_time || '23:00:00';
     const archCount = this._archive.length;
+    const isActive  = status === 'active';
 
     return `<div class="ov-backdrop" id="ov-close">
       <div class="ov-box" onclick="event.stopPropagation()">
@@ -182,6 +193,10 @@ class StepChallengeCard extends HTMLElement {
         </div>
 
         <div class="ov-body">
+          <div class="ov-hint">
+            Einstellungen werden beim Start einer neuen Challenge übernommen.
+          </div>
+
           <label class="ov-label">Challenge-Name</label>
           <input class="ov-input" id="ov-name" type="text" value="${name}">
 
@@ -191,32 +206,35 @@ class StepChallengeCard extends HTMLElement {
           <label class="ov-label">Auswertungszeit</label>
           <input class="ov-input" id="ov-time" type="time" value="${recTime.substring(0,5)}">
 
-          <button class="ov-btn ov-btn-primary" id="ov-save">💾 Speichern</button>
+          <div class="ov-divider"></div>
+
+          ${isActive ? `
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="ov-btn ov-btn-stop" id="ov-stop">⏹ Challenge stoppen</button>
+            </div>
+            <div class="ov-hint" style="margin-top:4px">
+              Nach dem Stoppen kann eine neue Challenge mit den obigen Einstellungen gestartet werden.
+            </div>
+          ` : `
+            <button class="ov-btn ov-btn-primary" id="ov-start">🚩 Neue Challenge starten</button>
+          `}
 
           <div class="ov-divider"></div>
 
-          <div class="ov-section-title">Challenge-Steuerung</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="ov-btn ov-btn-start" id="ov-start">🚩 Neue Challenge starten</button>
-            <button class="ov-btn ov-btn-stop"  id="ov-stop">⏹ Stoppen</button>
-            <button class="ov-btn ov-btn-rec"   id="ov-rec">📋 Etappe werten</button>
-          </div>
-
-          <div class="ov-divider"></div>
-
-          <div class="ov-section-title" style="display:flex;justify-content:space-between">
+          <div class="ov-section-title" style="display:flex;justify-content:space-between;align-items:center">
             <span>📦 Archiv <span class="ov-badge">${archCount}</span></span>
-            <button class="ov-btn ov-btn-sm" id="ov-archive-btn">Ins Archiv</button>
+            ${!isActive && archCount === 0 ? '' :
+              `<button class="ov-btn ov-btn-sm" id="ov-show-archive">Anzeigen →</button>`}
           </div>
           ${archCount > 0 ? `
-          <div class="ov-archive-list">
-            ${this._archive.slice(0,3).map(c => `
-              <div class="ov-archive-item">
-                <span class="ov-archive-name">${c.name}</span>
-                <span class="ov-archive-meta">${this._fmtD(c.start?.split('T')[0])} · 🏆 ${c.winner || '—'}</span>
-              </div>`).join('')}
-            ${archCount > 3 ? `<div class="ov-archive-more" id="ov-show-archive">+ ${archCount-3} weitere anzeigen →</div>` : ''}
-          </div>` : `<div style="font-size:.78rem;color:var(--secondary-text-color);padding:6px 0">Noch keine archivierten Challenges</div>`}
+            <div class="ov-archive-list">
+              ${this._archive.slice(0,3).map(c => `
+                <div class="ov-archive-item">
+                  <div class="ov-archive-name">${c.name}</div>
+                  <div class="ov-archive-meta">${this._fmtD(c.start?.split('T')[0])} · 🏆 ${c.winner || '—'}</div>
+                </div>`).join('')}
+            </div>
+          ` : `<div class="ov-hint">Noch keine archivierten Challenges.</div>`}
         </div>
       </div>
     </div>`;
@@ -394,41 +412,40 @@ class StepChallengeCard extends HTMLElement {
       this._showSettings = false; this._showArchive = false; this._selArchive.clear(); this._render();
     });
 
-    // Settings save
-    root.getElementById('ov-save')?.addEventListener('click', () => {
-      const name  = root.getElementById('ov-name')?.value?.trim();
-      const days  = root.getElementById('ov-days')?.value;
-      const time  = root.getElementById('ov-time')?.value;
+    // Start new challenge – apply settings first, then start
+    root.getElementById('ov-start')?.addEventListener('click', () => {
+      const name = root.getElementById('ov-name')?.value?.trim();
+      const days = root.getElementById('ov-days')?.value;
+      const time = root.getElementById('ov-time')?.value;
+      // Save settings, then start (start will auto-archive current)
       this._call('update_settings', {
-        challenge_name: name,
+        challenge_name: name || undefined,
         duration_days:  days ? parseInt(days) : undefined,
         record_time:    time ? time + ':00' : undefined,
       });
-      this._showSettings = false; this._render();
-    });
-
-    // Challenge control buttons in overlay
-    root.getElementById('ov-start')?.addEventListener('click', () => {
-      if (confirm('Aktuelle Challenge ins Archiv verschieben und neue starten?')) {
-        this._call('start'); this._showSettings = false; this._render();
-      }
-    });
-    root.getElementById('ov-stop')?.addEventListener('click', () => {
-      this._call('stop'); this._showSettings = false; this._render();
-    });
-    root.getElementById('ov-rec')?.addEventListener('click', () => {
-      this._call('record_day'); this._showSettings = false; this._render();
-    });
-
-    // Archive now button
-    root.getElementById('ov-archive-btn')?.addEventListener('click', () => {
-      if (confirm('Aktuelle Challenge jetzt ins Archiv verschieben?')) {
-        this._call('archive_challenge');
+      setTimeout(() => {
+        this._call('start');
+        this._showSettings = false;
         this._loadArchive().then(() => this._render());
-      }
+      }, 300);
     });
 
-    // Show full archive
+    // Stop challenge – ask whether to archive first
+    root.getElementById('ov-stop')?.addEventListener('click', () => {
+      const archive = confirm(
+        'Challenge stoppen\n\nMöchtest du die aktuelle Challenge vor dem Stoppen ins Archiv speichern?'
+      );
+      if (archive) {
+        this._call('archive_challenge');
+      }
+      setTimeout(() => {
+        this._call('stop');
+        this._showSettings = false;
+        this._loadArchive().then(() => this._render());
+      }, archive ? 400 : 0);
+    });
+
+    // Show archive
     root.getElementById('ov-show-archive')?.addEventListener('click', () => {
       this._showArchive = true; this._render();
     });
@@ -1109,6 +1126,8 @@ const CSS = `
   .ov-archive-item { background:rgba(255,255,255,.04); border-radius:8px; padding:8px 10px; }
   .ov-archive-name { font-size:.84rem; font-weight:600; }
   .ov-archive-meta { font-size:.72rem; color:var(--secondary-text-color); margin-top:2px; }
+  .ov-hint { font-size:.76rem; color:var(--secondary-text-color); line-height:1.4; padding:2px 0; }
+
   .ov-archive-more { font-size:.78rem; color:var(--accent-color,#e94560); cursor:pointer;
     padding:4px 0; text-align:right; }
   .ov-archive-more:hover { text-decoration:underline; }
