@@ -27,7 +27,7 @@ class StepChallengeCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=30),
+            update_interval=timedelta(seconds=5),
         )
         self.store   = store
         self.archive = archive

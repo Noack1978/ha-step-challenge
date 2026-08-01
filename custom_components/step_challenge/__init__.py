@@ -205,10 +205,8 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _refresh_all()
 
     async def _record_day(call: ServiceCall) -> None:
-        _LOGGER.debug("Step Challenge: record_day called, entry_ids=%s", _entry_ids())
         for entry_id in _entry_ids():
             store = _store(entry_id)
-            _LOGGER.debug("Step Challenge: store.active=%s", store.active)
             if not store.active:
                 continue
             parts = _participants(entry_id)
@@ -224,9 +222,8 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 except (ValueError, TypeError):
                     steps[p["key"]] = 0
 
-            _LOGGER.debug("Step Challenge: record_day steps=%s", steps)
             if not steps or all(v == 0 for v in steps.values()):
-                _LOGGER.warning("Step Challenge: no valid step data – steps=%s, parts=%s", steps, [p['entity'] for p in parts])
+                _LOGGER.warning("Step Challenge: no valid step data")
                 continue
 
             winner_key  = max(steps, key=lambda k: steps[k])
