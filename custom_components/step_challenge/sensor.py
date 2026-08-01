@@ -25,6 +25,29 @@ from .coordinator import StepChallengeCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
+
+# ── Archive Sensor ────────────────────────────────────────────────────────────
+
+class ChallengArchiveSensor(CoordinatorEntity[StepChallengeCoordinator], SensorEntity):
+    """Dedicated sensor for archive data – updates independently of status sensor."""
+    _attr_has_entity_name = True
+    _attr_name            = "Archive"
+    _attr_icon            = "mdi:archive"
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id   = f"{DOMAIN}_{entry.entry_id}_archive"
+        self._attr_device_info = _device(entry)
+
+    @property
+    def native_value(self) -> int:
+        return len(self.coordinator.data.get("archive", []))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"challenges": self.coordinator.data.get("archive", [])}
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -41,6 +64,7 @@ async def async_setup_entry(
     entities.append(DaysElapsedSensor(coordinator, entry))
     entities.append(ChallengeStatusSensor(coordinator, entry))
     entities.append(LeaderSensor(coordinator, entry))
+    entities.append(ChallengArchiveSensor(coordinator, entry))
     async_add_entities(entities)
 
 
@@ -188,7 +212,6 @@ class ChallengeStatusSensor(CoordinatorEntity[StepChallengeCoordinator], SensorE
             "record_time":   self._record_time(),
             "stages_recorded": len(data.get("history", [])),
             "history":       data.get("history", []),
-            "archive":       data.get("archive", []),
         }
 
 
