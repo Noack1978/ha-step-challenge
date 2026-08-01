@@ -43,3 +43,22 @@ update_settings:
     record_time:
       description: New daily evaluation time (HH:MM:SS).
       example: "23:00:00"
+
+add_participant:
+  name: Add Participant
+  description: Add a new participant to the challenge.
+  fields:
+    name:
+      description: Display name of the participant.
+      example: "Alice"
+    entity:
+      description: Step sensor entity ID.
+      example: "sensor.alice_daily_steps"
+
+remove_participant:
+  name: Remove Participant
+  description: Remove a participant from the challenge by their key.
+  fields:
+    key:
+      description: Participant key (lowercase name with underscores).
+      example: "alice"

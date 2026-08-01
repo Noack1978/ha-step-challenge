@@ -39,7 +39,9 @@ from .storage import ChallengeStore
 
 _LOGGER = logging.getLogger(__name__)
 
-SERVICE_ARCHIVE        = "archive_challenge"
+SERVICE_ARCHIVE         = "archive_challenge"
+SERVICE_ADD_PARTICIPANT    = "add_participant"
+SERVICE_REMOVE_PARTICIPANT = "remove_participant"
 SERVICE_DELETE_ARCHIVE = "delete_archive_entries"
 SERVICE_UPDATE_SETTINGS = "update_settings"
 
@@ -269,13 +271,51 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _LOGGER.info("Step Challenge: settings updated via panel")
 
     # Register all services
+    async def _add_participant(call: ServiceCall) -> None:
+        """Add a participant dynamically."""
+        import re as _re
+        name   = (call.data.get("name") or "").strip()
+        entity = (call.data.get("entity") or "").strip()
+        if not name or not entity:
+            _LOGGER.warning("Step Challenge: add_participant requires name and entity")
+            return
+        key = _re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+        for entry_id in _entry_ids():
+            e = hass.config_entries.async_get_entry(entry_id)
+            current = dict(e.options or e.data)
+            parts = list(current.get(CONF_PARTICIPANTS, []))
+            if any(p["key"] == key for p in parts):
+                _LOGGER.warning("Step Challenge: participant '%s' already exists", name)
+                return
+            parts.append({"key": key, "name": name, "entity": entity})
+            current[CONF_PARTICIPANTS] = parts
+            hass.config_entries.async_update_entry(e, options=current)
+            hass.bus.async_fire(f"{DOMAIN}_participants_updated")
+            _LOGGER.info("Step Challenge: added participant '%s'", name)
+
+    async def _remove_participant(call: ServiceCall) -> None:
+        """Remove a participant by key."""
+        key = (call.data.get("key") or "").strip()
+        if not key:
+            return
+        for entry_id in _entry_ids():
+            e = hass.config_entries.async_get_entry(entry_id)
+            current = dict(e.options or e.data)
+            parts = [p for p in current.get(CONF_PARTICIPANTS, []) if p["key"] != key]
+            current[CONF_PARTICIPANTS] = parts
+            hass.config_entries.async_update_entry(e, options=current)
+            hass.bus.async_fire(f"{DOMAIN}_participants_updated")
+            _LOGGER.info("Step Challenge: removed participant '%s'", key)
+
     svc_map = {
-        SERVICE_START:          _start,
-        SERVICE_STOP:           _stop,
-        SERVICE_RECORD_DAY:     _record_day,
-        SERVICE_ARCHIVE:        _archive_challenge,
-        SERVICE_DELETE_ARCHIVE: _delete_archive,
-        SERVICE_UPDATE_SETTINGS: _update_settings,
+        SERVICE_START:             _start,
+        SERVICE_STOP:              _stop,
+        SERVICE_RECORD_DAY:        _record_day,
+        SERVICE_ARCHIVE:           _archive_challenge,
+        SERVICE_DELETE_ARCHIVE:    _delete_archive,
+        SERVICE_UPDATE_SETTINGS:   _update_settings,
+        SERVICE_ADD_PARTICIPANT:    _add_participant,
+        SERVICE_REMOVE_PARTICIPANT: _remove_participant,
     }
     for name, fn in svc_map.items():
         if not hass.services.has_service(DOMAIN, name):

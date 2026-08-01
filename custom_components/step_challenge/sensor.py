@@ -179,10 +179,20 @@ class ChallengeStatusSensor(_Base):
 
     @property
     def extra_state_attributes(self) -> dict:
+        # Import archive here to avoid circular imports
+        from .archive import ChallengeArchive
+        archive_data = []
+        try:
+            arch = self.hass.data.get("step_challenge", {}).get(self._entry.entry_id, {}).get("archive")
+            if arch:
+                archive_data = arch.challenges
+        except Exception:
+            pass
         return {
             "start": self._store.start,
             "stages_recorded": len(self._store.history),
             "history": self._store.history,
+            "archive": archive_data,
         }
 
 
