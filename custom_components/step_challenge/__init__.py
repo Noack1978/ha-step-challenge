@@ -160,7 +160,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         return e.options.get(CONF_CHALLENGE_NAME, e.data.get(CONF_CHALLENGE_NAME, "Step Challenge"))
 
     def _entry_ids() -> list[str]:
-        return list(hass.data[DOMAIN].keys())
+        return [k for k in hass.data[DOMAIN] if isinstance(hass.data[DOMAIN][k], dict) and "store" in hass.data[DOMAIN][k]]
 
     async def _do_archive(entry_id: str) -> None:
         store = _store(entry_id)
