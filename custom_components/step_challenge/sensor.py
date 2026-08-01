@@ -6,7 +6,7 @@ from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, callback, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_CHALLENGE_NAME, CONF_DURATION_DAYS, CONF_PARTICIPANTS, DOMAIN
