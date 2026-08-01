@@ -738,4 +738,6 @@ const CSS = `
   @media(max-width:480px) { .l-bar-wrap { display:none; } }
 `;
 
-customElements.define('step-challenge-card', StepChallengeCard);
+if (!customElements.get('step-challenge-card')) {
+  customElements.define('step-challenge-card', StepChallengeCard);
+}
