@@ -19,7 +19,11 @@ class StepChallengeCard extends HTMLElement {
     this._stateKey = '';           // hash of relevant states for change detection
     this._showTrack = false;       // toggle for race track view
     this._showToday = false;       // toggle for today's stage zoom
-    this._tableRows  = 7;            // configurable number of recent stages rows
+    this._tableRows   = 7;            // configurable number of recent stages rows
+    this._showSettings = false;       // settings overlay
+    this._showArchive  = false;       // archive view inside overlay
+    this._archive      = [];          // cached archive data
+    this._selArchive   = new Set();   // selected archive ids for deletion
   }
 
   // ── HA lifecycle ─────────────────────────────────────────────────────────
@@ -78,6 +82,14 @@ class StepChallengeCard extends HTMLElement {
       )
       .then(unsub => { this._unsubFn = unsub; })
       .catch(err => console.warn('Step Challenge Panel: event subscription failed', err));
+    // Also subscribe to settings and archive events
+    for (const ev of ['step_challenge_settings_updated','step_challenge_archived','step_challenge_archive_updated']) {
+      try {
+        this._hass.connection.subscribeEvents(() => {
+          this._loadArchive().then(() => this._render());
+        }, ev).catch(() => {});
+      } catch(e) {}
+    }
   }
 
   // ── HA data helpers ───────────────────────────────────────────────────────
@@ -132,8 +144,131 @@ class StepChallengeCard extends HTMLElement {
 
   // ── Service calls ─────────────────────────────────────────────────────────
 
-  _call(service) {
-    this._hass?.callService(SC, service, {});
+  _call(service, data = {}) {
+    this._hass?.callService(SC, service, data);
+  }
+
+  async _loadArchive() {
+    try {
+      const t = this._hass?.auth?.data?.access_token || '';
+      const r = await fetch(`${location.origin}/api/storage/step_challenge.archive`,
+        { headers: { Authorization: `Bearer ${t}` } });
+      if (r.ok) {
+        const d = await r.json();
+        this._archive = (d?.challenges || []).slice().reverse(); // newest first
+      }
+    } catch(e) { this._archive = []; }
+  }
+
+  // ── Settings overlay ───────────────────────────────────────────────────────
+
+  _renderOverlay() {
+    const entry = Object.values(this._hass?.states || {}).find(s =>
+      s.entity_id.includes('step_challenge') && s.entity_id.includes('_status')
+    );
+    const name = this._name();
+    const total = this._total();
+    const recTime = entry?.attributes?.record_time || '23:00:00';
+
+    if (this._showArchive) return this._renderArchiveView();
+
+    const archCount = this._archive.length;
+
+    return `<div class="ov-backdrop" id="ov-close">
+      <div class="ov-box" onclick="event.stopPropagation()">
+        <div class="ov-header">
+          <span>⚙️ Challenge-Einstellungen</span>
+          <button class="ov-close" id="ov-close-btn">✕</button>
+        </div>
+
+        <div class="ov-body">
+          <label class="ov-label">Challenge-Name</label>
+          <input class="ov-input" id="ov-name" type="text" value="${name}">
+
+          <label class="ov-label">Dauer (Tage)</label>
+          <input class="ov-input" id="ov-days" type="number" min="7" max="365" value="${total}">
+
+          <label class="ov-label">Auswertungszeit</label>
+          <input class="ov-input" id="ov-time" type="time" value="${recTime.substring(0,5)}">
+
+          <button class="ov-btn ov-btn-primary" id="ov-save">💾 Speichern</button>
+
+          <div class="ov-divider"></div>
+
+          <div class="ov-section-title">Challenge-Steuerung</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="ov-btn ov-btn-start" id="ov-start">🚩 Neue Challenge starten</button>
+            <button class="ov-btn ov-btn-stop"  id="ov-stop">⏹ Stoppen</button>
+            <button class="ov-btn ov-btn-rec"   id="ov-rec">📋 Etappe werten</button>
+          </div>
+
+          <div class="ov-divider"></div>
+
+          <div class="ov-section-title" style="display:flex;justify-content:space-between">
+            <span>📦 Archiv <span class="ov-badge">${archCount}</span></span>
+            <button class="ov-btn ov-btn-sm" id="ov-archive-btn">Ins Archiv</button>
+          </div>
+          ${archCount > 0 ? `
+          <div class="ov-archive-list">
+            ${this._archive.slice(0,3).map(c => `
+              <div class="ov-archive-item">
+                <span class="ov-archive-name">${c.name}</span>
+                <span class="ov-archive-meta">${this._fmtD(c.start?.split('T')[0])} · 🏆 ${c.winner || '—'}</span>
+              </div>`).join('')}
+            ${archCount > 3 ? `<div class="ov-archive-more" id="ov-show-archive">+ ${archCount-3} weitere anzeigen →</div>` : ''}
+          </div>` : `<div style="font-size:.78rem;color:var(--secondary-text-color);padding:6px 0">Noch keine archivierten Challenges</div>`}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  _renderArchiveView() {
+    const archCount = this._archive.length;
+    const allSelected = this._selArchive.size === archCount && archCount > 0;
+
+    return `<div class="ov-backdrop" id="ov-close">
+      <div class="ov-box ov-box-wide" onclick="event.stopPropagation()">
+        <div class="ov-header">
+          <button class="ov-back" id="ov-back-btn">← Zurück</button>
+          <span>📦 Archiv (${archCount})</span>
+          <button class="ov-close" id="ov-close-btn">✕</button>
+        </div>
+        <div class="ov-body">
+          ${archCount === 0
+            ? `<div style="color:var(--secondary-text-color);padding:16px 0">Kein Archiv vorhanden.</div>`
+            : `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;cursor:pointer">
+                  <input type="checkbox" id="sel-all" ${allSelected?'checked':''}> Alle auswählen
+                </label>
+                <button class="ov-btn ov-btn-danger" id="ov-delete-sel"
+                  ${this._selArchive.size===0?'disabled':''}>
+                  🗑 Ausgewählte löschen (${this._selArchive.size})
+                </button>
+              </div>
+              <div class="ov-archive-full">
+                ${this._archive.map(c => `
+                  <div class="ov-arc-row ${this._selArchive.has(c.id)?'ov-arc-sel':''}">
+                    <input type="checkbox" class="arc-cb" data-id="${c.id}"
+                      ${this._selArchive.has(c.id)?'checked':''}>
+                    <div class="ov-arc-info">
+                      <div class="ov-arc-name">${c.name}</div>
+                      <div class="ov-arc-meta">
+                        ${this._fmtD(c.start?.split('T')[0])} →
+                        ${this._fmtD(c.archived_at?.split('T')[0])} ·
+                        🏆 ${c.winner || '—'} ·
+                        ${c.participants?.length || 0} Teilnehmer
+                      </div>
+                      <div class="ov-arc-scores">
+                        ${(c.participants||[]).map(p =>
+                          `<span style="color:var(--secondary-text-color)">${p.name}: <b>${p.stages}</b> Etappen</span>`
+                        ).join(' &nbsp;·&nbsp; ')}
+                      </div>
+                    </div>
+                  </div>`).join('')}
+              </div>`}
+        </div>
+      </div>
+    </div>`;
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -157,6 +292,7 @@ class StepChallengeCard extends HTMLElement {
           <h1>🏁 ${name}</h1>
           <div class="sub">Day ${elapsed} of ${total}</div>
         </div>
+        <button class="menu-btn" id="settings-btn" title="Settings">⚙️</button>
         <span class="badge ${bCls}">${bTxt}</span>
       </div>
       <div class="prog-wrap">
@@ -242,10 +378,98 @@ class StepChallengeCard extends HTMLElement {
   }
 
   _paint(html) {
-    this.shadowRoot.innerHTML = `<style>${CSS}</style><div class="root">${html}</div>`;
+    const overlay = (this._showSettings || this._showArchive) ? this._renderOverlay() : '';
+    this.shadowRoot.innerHTML = `<style>${CSS}</style><div class="root">${html}</div>${overlay}`;
+    this._bindOverlay();
+  }
+
+  _bindOverlay() {
+    const root = this.shadowRoot;
+
+    // Close on backdrop click
+    root.getElementById('ov-close')?.addEventListener('click', (e) => {
+      if (e.target.id === 'ov-close') { this._showSettings = false; this._showArchive = false; this._render(); }
+    });
+    root.getElementById('ov-close-btn')?.addEventListener('click', () => {
+      this._showSettings = false; this._showArchive = false; this._selArchive.clear(); this._render();
+    });
+
+    // Settings save
+    root.getElementById('ov-save')?.addEventListener('click', () => {
+      const name  = root.getElementById('ov-name')?.value?.trim();
+      const days  = root.getElementById('ov-days')?.value;
+      const time  = root.getElementById('ov-time')?.value;
+      this._call('update_settings', {
+        challenge_name: name,
+        duration_days:  days ? parseInt(days) : undefined,
+        record_time:    time ? time + ':00' : undefined,
+      });
+      this._showSettings = false; this._render();
+    });
+
+    // Challenge control buttons in overlay
+    root.getElementById('ov-start')?.addEventListener('click', () => {
+      if (confirm('Aktuelle Challenge ins Archiv verschieben und neue starten?')) {
+        this._call('start'); this._showSettings = false; this._render();
+      }
+    });
+    root.getElementById('ov-stop')?.addEventListener('click', () => {
+      this._call('stop'); this._showSettings = false; this._render();
+    });
+    root.getElementById('ov-rec')?.addEventListener('click', () => {
+      this._call('record_day'); this._showSettings = false; this._render();
+    });
+
+    // Archive now button
+    root.getElementById('ov-archive-btn')?.addEventListener('click', () => {
+      if (confirm('Aktuelle Challenge jetzt ins Archiv verschieben?')) {
+        this._call('archive_challenge');
+        this._loadArchive().then(() => this._render());
+      }
+    });
+
+    // Show full archive
+    root.getElementById('ov-show-archive')?.addEventListener('click', () => {
+      this._showArchive = true; this._render();
+    });
+
+    // Back from archive
+    root.getElementById('ov-back-btn')?.addEventListener('click', () => {
+      this._showArchive = false; this._showSettings = true; this._render();
+    });
+
+    // Archive checkboxes
+    root.getElementById('sel-all')?.addEventListener('change', (e) => {
+      if (e.target.checked) this._archive.forEach(c => this._selArchive.add(c.id));
+      else this._selArchive.clear();
+      this._render();
+    });
+    root.querySelectorAll('.arc-cb').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        if (e.target.checked) this._selArchive.add(id);
+        else this._selArchive.delete(id);
+        this._render();
+      });
+    });
+
+    // Delete selected
+    root.getElementById('ov-delete-sel')?.addEventListener('click', () => {
+      if (this._selArchive.size === 0) return;
+      if (confirm(`${this._selArchive.size} Einträge löschen?`)) {
+        this._call('delete_archive_entries', { ids: [...this._selArchive] });
+        this._selArchive.clear();
+        this._loadArchive().then(() => this._render());
+      }
+    });
   }
 
   _bind() {
+    this.shadowRoot.getElementById('settings-btn')?.addEventListener('click', () => {
+      this._showSettings = true;
+      this._showArchive = false;
+      this._loadArchive().then(() => this._render());
+    });
     this.shadowRoot.getElementById('s')?.addEventListener('click', () => this._call('start'));
     this.shadowRoot.getElementById('x')?.addEventListener('click', () => this._call('stop'));
     this.shadowRoot.getElementById('r')?.addEventListener('click', () => this._call('record_day'));
@@ -840,6 +1064,64 @@ const CSS = `
   .empty p  { color:var(--secondary-text-color); font-size:.82rem; max-width:280px; margin:0; }
 
   @media(max-width:480px) { .l-bar-wrap { display:none; } }
+
+  /* ── Settings Overlay ── */
+  .ov-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:900;
+    display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+  .ov-box { background:var(--card-background-color); border-radius:14px;
+    border:1px solid var(--divider-color); width:min(480px,94vw);
+    max-height:85vh; display:flex; flex-direction:column; overflow:hidden; }
+  .ov-box-wide { width:min(580px,96vw); }
+  .ov-header { display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px; border-bottom:1px solid var(--divider-color);
+    font-size:.95rem; font-weight:700; gap:8px; }
+  .ov-close { background:none; border:none; cursor:pointer; font-size:1.1rem;
+    color:var(--secondary-text-color); padding:2px 6px; border-radius:6px; font-family:inherit; }
+  .ov-back  { background:none; border:none; cursor:pointer; font-size:.82rem;
+    color:var(--accent-color,#e94560); padding:2px 6px; font-family:inherit; }
+  .ov-body  { padding:16px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; }
+  .ov-label { font-size:.75rem; color:var(--secondary-text-color); font-weight:600;
+    letter-spacing:.05em; text-transform:uppercase; }
+  .ov-input { width:100%; background:rgba(255,255,255,.06); border:1.5px solid var(--divider-color);
+    border-radius:8px; padding:9px 12px; font-size:.9rem; color:var(--primary-text-color);
+    font-family:inherit; box-sizing:border-box; }
+  .ov-input:focus { outline:none; border-color:var(--accent-color,#e94560); }
+  .ov-divider { height:1px; background:var(--divider-color); margin:4px 0; }
+  .ov-section-title { font-size:.78rem; font-weight:700; color:var(--secondary-text-color);
+    text-transform:uppercase; letter-spacing:.06em; }
+  .ov-badge { background:var(--accent-color,#e94560); color:#fff; border-radius:10px;
+    padding:1px 7px; font-size:.7rem; font-weight:700; margin-left:4px; }
+
+  .ov-btn { padding:8px 14px; border-radius:8px; border:none; font-size:.82rem;
+    font-weight:600; cursor:pointer; font-family:inherit; transition:opacity .2s; }
+  .ov-btn:hover:not([disabled]) { opacity:.8; }
+  .ov-btn[disabled] { opacity:.35; cursor:default; }
+  .ov-btn-primary { background:var(--accent-color,#e94560); color:#fff; width:100%; padding:10px; font-size:.88rem; }
+  .ov-btn-start { background:rgba(14,173,105,.15); color:#0ead69; border:1px solid #0ead69; }
+  .ov-btn-stop  { background:rgba(233,69,96,.15);  color:#e94560; border:1px solid #e94560; }
+  .ov-btn-rec   { background:rgba(255,215,0,.15);  color:#ffd700; border:1px solid #ffd700; }
+  .ov-btn-sm    { padding:4px 10px; font-size:.75rem; background:rgba(255,255,255,.08);
+    border:1px solid var(--divider-color); color:var(--secondary-text-color); }
+  .ov-btn-danger { background:rgba(233,69,96,.15); color:#e94560; border:1px solid #e94560;
+    padding:5px 12px; font-size:.78rem; }
+
+  .ov-archive-list { display:flex; flex-direction:column; gap:6px; }
+  .ov-archive-item { background:rgba(255,255,255,.04); border-radius:8px; padding:8px 10px; }
+  .ov-archive-name { font-size:.84rem; font-weight:600; }
+  .ov-archive-meta { font-size:.72rem; color:var(--secondary-text-color); margin-top:2px; }
+  .ov-archive-more { font-size:.78rem; color:var(--accent-color,#e94560); cursor:pointer;
+    padding:4px 0; text-align:right; }
+  .ov-archive-more:hover { text-decoration:underline; }
+
+  .ov-archive-full { display:flex; flex-direction:column; gap:6px; max-height:50vh; overflow-y:auto; }
+  .ov-arc-row { display:flex; align-items:flex-start; gap:10px; padding:9px 10px;
+    border-radius:8px; background:rgba(255,255,255,.03); border:1px solid transparent;
+    transition:border-color .15s; }
+  .ov-arc-sel { border-color:var(--accent-color,#e94560); background:rgba(233,69,96,.08); }
+  .ov-arc-info { flex:1; min-width:0; }
+  .ov-arc-name  { font-size:.85rem; font-weight:600; }
+  .ov-arc-meta  { font-size:.72rem; color:var(--secondary-text-color); margin-top:2px; }
+  .ov-arc-scores { font-size:.72rem; color:var(--secondary-text-color); margin-top:3px; }
 
   /* Today stage info rows */
   .row-btn { background:rgba(255,255,255,.08); border:1px solid var(--divider-color);
