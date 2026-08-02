@@ -174,11 +174,45 @@ class StepChallengeCard extends HTMLElement {
       </div>`;
 
     if (status === 'inactive') {
-      h += `<div class="empty">
-        <div class="icon">🏃</div>
-        <h2>No challenge active</h2>
-        <p>Press Start to begin the race.</p>
-      </div>`;
+      // Show last challenge results if data exists
+      const lastParts = this._participants().sort((a,b) => b.score-a.score || b.steps-a.steps);
+      const hasData   = lastParts.length > 0 && lastParts.some(p => p.score > 0);
+
+      if (hasData) {
+        const winner  = lastParts[0];
+        const maxS    = Math.max(...lastParts.map(p=>p.score), 1);
+        h += `<div class="result-banner">
+          <div class="result-title">🏆 Letztes Ergebnis</div>
+          <div class="result-winner">
+            <span class="result-crown">👑</span>
+            <span style="color:${COLORS[0]};font-weight:700;font-size:1.1rem">${winner.name}</span>
+            <span class="result-wins">${winner.score} Etappensiege</span>
+          </div>
+          <div class="result-rows">
+            ${lastParts.map((p,i) => {
+              const c   = COLORS[i%COLORS.length];
+              const pct = Math.round((p.score/maxS)*100);
+              return `<div class="result-row">
+                <div class="result-name" style="color:${c}">${MEDALS[i]||i+1+'.'} ${p.name}</div>
+                <div class="result-bar-bg">
+                  <div class="result-bar-fill" style="width:${pct}%;background:${c}"></div>
+                </div>
+                <div class="result-score" style="color:${c}">${p.score}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        <div class="empty" style="min-height:120px">
+          <h2>Keine Challenge aktiv</h2>
+          <p>🚩 Start um eine neue Challenge zu beginnen.</p>
+        </div>`;
+      } else {
+        h += `<div class="empty">
+          <div class="icon">🏃</div>
+          <h2>Keine Challenge aktiv</h2>
+          <p>🚩 Start um eine neue Challenge zu beginnen.</p>
+        </div>`;
+      }
       this._paint(h);
       this._bind();
       return;
@@ -250,7 +284,7 @@ class StepChallengeCard extends HTMLElement {
   _bind() {
     this.shadowRoot.getElementById('s')?.addEventListener('click', () => this._call('start'));
     this.shadowRoot.getElementById('x')?.addEventListener('click', () => {
-      if (confirm('Challenge wirklich stoppen?\n\nDer aktuelle Fortschritt bleibt erhalten.')) {
+      if (confirm('Challenge wirklich stoppen?\n\nDie Challenge wird beendet. Es werden keine weiteren Etappen mehr gewertet.')) {
         this._call('stop');
       }
     });
