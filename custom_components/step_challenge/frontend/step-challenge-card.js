@@ -164,9 +164,10 @@ class StepChallengeCard extends HTMLElement {
         <div class="prog-bg"><div class="prog-fill" style="width:${pct}%"></div></div>
       </div>
       <div class="btn-wrap">
-        <button class="btn btn-start" id="s">🚩 Start</button>
-        <button class="btn btn-rec"   id="r">🏁 Etappe beenden</button>
-        <button class="btn btn-stop"  id="x">⏹ Stoppen</button>
+        ${status === 'active'
+          ? `<button class="btn btn-rec"   id="r">🏁 Etappe beenden</button>
+             <button class="btn btn-stop"  id="x">⏹ Stoppen</button>`
+          : `<button class="btn btn-start" id="s">🚩 Start</button>`}
         <button class="btn btn-settings" id="cfg">⚙️ Einstellungen</button>
         <button class="btn btn-track ${this._showTrack ? 'btn-track-on' : ''}" id="t">🗺 Route</button>
         <button class="btn btn-track ${this._showToday ? 'btn-track-on' : ''}" id="td">📍 Heute</button>
