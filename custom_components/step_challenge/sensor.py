@@ -38,6 +38,7 @@ class ChallengArchiveSensor(CoordinatorEntity[StepChallengeCoordinator], SensorE
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id   = f"{DOMAIN}_{entry.entry_id}_archive"
+        self.entity_id         = f"sensor.{DOMAIN}_archive"
         self._attr_device_info = _device(entry)
 
     @property
@@ -69,12 +70,9 @@ async def async_setup_entry(
 
 
 def _device(entry: ConfigEntry) -> DeviceInfo:
-    name = entry.options.get(
-        CONF_CHALLENGE_NAME, entry.data.get(CONF_CHALLENGE_NAME, "Step Challenge")
-    )
     return DeviceInfo(
         identifiers={(DOMAIN, entry.entry_id)},
-        name=name,
+        name="Step Challenge",
         manufacturer="Noack1978",
         model="Step Challenge",
     )
@@ -93,6 +91,7 @@ class StageSensor(CoordinatorEntity[StepChallengeCoordinator], SensorEntity):
         self._participant = participant
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_stages_{participant['key']}"
         self._attr_name      = f"{participant['name']} Stage Wins"
+        self.entity_id       = f"sensor.{DOMAIN}_{participant['key']}_stage_wins"
         self._attr_device_info = _device(entry)
 
     @property
@@ -122,6 +121,7 @@ class DaysElapsedSensor(CoordinatorEntity[StepChallengeCoordinator], SensorEntit
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id   = f"{DOMAIN}_{entry.entry_id}_days_elapsed"
+        self.entity_id         = f"sensor.{DOMAIN}_days_elapsed"
         self._attr_device_info = _device(entry)
 
     def _duration(self) -> int:
@@ -168,6 +168,7 @@ class ChallengeStatusSensor(CoordinatorEntity[StepChallengeCoordinator], SensorE
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id   = f"{DOMAIN}_{entry.entry_id}_status"
+        self.entity_id         = f"sensor.{DOMAIN}_status"
         self._attr_device_info = _device(entry)
 
     def _challenge_name(self) -> str:
@@ -225,6 +226,7 @@ class LeaderSensor(CoordinatorEntity[StepChallengeCoordinator], SensorEntity):
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id   = f"{DOMAIN}_{entry.entry_id}_leader"
+        self.entity_id         = f"sensor.{DOMAIN}_leader"
         self._attr_device_info = _device(entry)
 
     @property
