@@ -27,7 +27,6 @@ class StepChallengeCard extends HTMLElement {
     this._addingPart  = false;
     // Debounce service calls
     this._lastCall    = null;
-    this._lastStateKey = '';
   }
 
   // ── HA lifecycle ───────────────────────────────────────────────────────────
@@ -44,16 +43,7 @@ class StepChallengeCard extends HTMLElement {
     if (!this._initialized) {
       this._buildDOM();
       this._initialized = true;
-      this._updateAll();
-      return;
     }
-    // Only re-render when step_challenge states changed (last_updated covers attribute changes)
-    const key = Object.values(hass.states)
-      .filter(s => s.entity_id.includes('step_challenge'))
-      .map(s => s.entity_id + ':' + s.last_updated)
-      .sort().join('|');
-    if (key === this._lastStateKey) return;
-    this._lastStateKey = key;
     this._updateAll();
   }
 
