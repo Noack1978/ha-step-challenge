@@ -27,7 +27,7 @@ class StepChallengeCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=5),
+            update_interval=timedelta(seconds=30),
         )
         self.store   = store
         self.archive = archive
@@ -43,14 +43,5 @@ class StepChallengeCoordinator(DataUpdateCoordinator):
         }
 
     def async_force_refresh(self) -> None:
-        """Force immediate update of all listeners (sensors/cards)."""
-        _LOGGER.debug("Manually updated step_challenge data")
-        self.async_set_updated_data({
-            "active":   self.store.active,
-            "start":    self.store.start,
-            "scores":   self.store.scores,
-            "history":  self.store.history,
-            "archive":  self.archive.challenges,
-        })
-        # Also trigger async update to ensure sensors write their state
-        self.hass.async_create_task(self.async_request_refresh())
+        """Force immediate update – triggers _async_update_data() which reads fresh data."""
+        self.hass.async_create_task(self.async_refresh())
