@@ -167,6 +167,7 @@ class StepChallengeCard extends HTMLElement {
         <button class="btn btn-start" id="s">🚩 Start</button>
         <button class="btn btn-rec"   id="r">🏁 Etappe beenden</button>
         <button class="btn btn-stop"  id="x">⏹ Stoppen</button>
+        <button class="btn btn-settings" id="cfg">⚙️ Einstellungen</button>
         <button class="btn btn-track ${this._showTrack ? 'btn-track-on' : ''}" id="t">🗺 Route</button>
         <button class="btn btn-track ${this._showToday ? 'btn-track-on' : ''}" id="td">📍 Heute</button>
       </div>`;
@@ -273,6 +274,11 @@ class StepChallengeCard extends HTMLElement {
     this.shadowRoot.getElementById('rows-all')?.addEventListener('click', () => {
       this._tableRows = total2;
       this._render();
+    });
+    this.shadowRoot.getElementById('cfg')?.addEventListener('click', () => {
+      // Navigate to integration config page
+      window.history.pushState(null, '', '/config/integrations/integration/step_challenge');
+      window.dispatchEvent(new CustomEvent('location-changed'));
     });
     this.shadowRoot.getElementById('menu-btn')?.addEventListener('click', () => {
       // Fire HA sidebar toggle event – same method used by Music Assistant / Beatify
@@ -785,6 +791,7 @@ const CSS = `
   .btn:hover { opacity:.8; }
   .btn-start { background:rgba(14,173,105,.15); color:#0ead69; border:1px solid #0ead69; }
   .btn-stop  { background:rgba(233,69,96,.15);  color:#e94560; border:1px solid #e94560; }
+  .btn-settings { background:rgba(255,255,255,.06); color:var(--secondary-text-color); border:1px solid var(--divider-color); }
   .btn-rec   { background:rgba(255,215,0,.15);  color:#ffd700; border:1px solid #ffd700; }
 
   .sec { padding:14px 18px 6px; }
