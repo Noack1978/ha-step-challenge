@@ -192,7 +192,15 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             winner_name = next(
                 (p["name"] for p in parts if p["key"] == winner_key), winner_key
             )
-            date_str = datetime.now().strftime("%Y-%m-%d")
+            # If next_day_eval is active, score goes to yesterday
+            e = hass.config_entries.async_get_entry(entry_id)
+            next_day = e.options.get(
+                CONF_NEXT_DAY_EVAL,
+                e.data.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
+            )
+            from datetime import timedelta
+            eval_date = datetime.now() - timedelta(days=1) if next_day else datetime.now()
+            date_str = eval_date.strftime("%Y-%m-%d")
             store.record_stage(date_str, winner_key, steps)
             await store.async_save()
 

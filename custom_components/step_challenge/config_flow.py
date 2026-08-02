@@ -12,8 +12,10 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_CHALLENGE_NAME,
     CONF_DURATION_DAYS,
+    CONF_NEXT_DAY_EVAL,
     CONF_PARTICIPANTS,
     CONF_RECORD_TIME,
+    DEFAULT_NEXT_DAY_EVAL,
     CONF_SHOW_BLUEPRINT_HINT,
     DEFAULT_CHALLENGE_NAME,
     DEFAULT_DURATION_DAYS,
@@ -38,6 +40,7 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._name: str = DEFAULT_CHALLENGE_NAME
         self._duration: int = DEFAULT_DURATION_DAYS
         self._record_time: str = DEFAULT_RECORD_TIME
+        self._next_day: bool = DEFAULT_NEXT_DAY_EVAL
         self._participants: list[dict] = []
 
     async def async_step_user(self, user_input=None) -> FlowResult:
@@ -48,6 +51,7 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._name        = user_input[CONF_CHALLENGE_NAME].strip()
             self._duration    = int(user_input[CONF_DURATION_DAYS])
             self._record_time = user_input[CONF_RECORD_TIME]
+            self._next_day    = user_input.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
             return await self.async_step_add_participant()
 
         return self.async_show_form(
@@ -58,6 +62,7 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     int, vol.Range(min=7, max=365)
                 ),
                 vol.Required(CONF_RECORD_TIME, default=DEFAULT_RECORD_TIME): _TIME_SELECTOR,
+                vol.Required(CONF_NEXT_DAY_EVAL, default=DEFAULT_NEXT_DAY_EVAL): bool,
             }),
         )
 
@@ -99,8 +104,9 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_CHALLENGE_NAME: self._name,
                     CONF_DURATION_DAYS:  self._duration,
                     CONF_RECORD_TIME:    self._record_time,
-                    CONF_PARTICIPANTS:   self._participants,
+                    CONF_PARTICIPANTS:        self._participants,
                     CONF_SHOW_BLUEPRINT_HINT: DEFAULT_SHOW_BLUEPRINT_HINT,
+                    CONF_NEXT_DAY_EVAL:       self._next_day,
                 },
             )
 
@@ -139,6 +145,9 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
         )
         self._show_hint: bool = config_entry.options.get(
             CONF_SHOW_BLUEPRINT_HINT, config_entry.data.get(CONF_SHOW_BLUEPRINT_HINT, DEFAULT_SHOW_BLUEPRINT_HINT)
+        )
+        self._next_day: bool = config_entry.options.get(
+            CONF_NEXT_DAY_EVAL, config_entry.data.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
         )
 
     async def async_step_init(self, user_input=None) -> FlowResult:
@@ -249,6 +258,7 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
             self._name        = user_input[CONF_CHALLENGE_NAME].strip()
             self._duration    = int(user_input[CONF_DURATION_DAYS])
             self._record_time = user_input[CONF_RECORD_TIME]
+            self._next_day    = user_input[CONF_NEXT_DAY_EVAL]
             self._show_hint   = user_input[CONF_SHOW_BLUEPRINT_HINT]
             return self._save()
 
@@ -260,6 +270,7 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                     int, vol.Range(min=7, max=365)
                 ),
                 vol.Required(CONF_RECORD_TIME, default=self._record_time): _TIME_SELECTOR,
+                vol.Required(CONF_NEXT_DAY_EVAL, default=self._next_day): bool,
                 vol.Required(CONF_SHOW_BLUEPRINT_HINT, default=self._show_hint): bool,
             }),
         )
@@ -273,5 +284,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                 CONF_RECORD_TIME:         self._record_time,
                 CONF_PARTICIPANTS:        self._participants,
                 CONF_SHOW_BLUEPRINT_HINT: self._show_hint,
+                CONF_NEXT_DAY_EVAL:       self._next_day,
             },
         )
