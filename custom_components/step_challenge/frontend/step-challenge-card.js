@@ -165,8 +165,8 @@ class StepChallengeCard extends HTMLElement {
       </div>
       <div class="btn-wrap">
         <button class="btn btn-start" id="s">🚩 Start</button>
-        <button class="btn btn-stop"  id="x">⏹ Stop</button>
-        <button class="btn btn-rec"   id="r">📋 Record Day</button>
+        <button class="btn btn-rec"   id="r">🏁 Etappe beenden</button>
+        <button class="btn btn-stop"  id="x">⏹ Stoppen</button>
         <button class="btn btn-track ${this._showTrack ? 'btn-track-on' : ''}" id="t">🗺 Route</button>
         <button class="btn btn-track ${this._showToday ? 'btn-track-on' : ''}" id="td">📍 Heute</button>
       </div>`;
@@ -247,7 +247,11 @@ class StepChallengeCard extends HTMLElement {
 
   _bind() {
     this.shadowRoot.getElementById('s')?.addEventListener('click', () => this._call('start'));
-    this.shadowRoot.getElementById('x')?.addEventListener('click', () => this._call('stop'));
+    this.shadowRoot.getElementById('x')?.addEventListener('click', () => {
+      if (confirm('Challenge wirklich stoppen?\n\nDer aktuelle Fortschritt bleibt erhalten.')) {
+        this._call('stop');
+      }
+    });
     this.shadowRoot.getElementById('r')?.addEventListener('click', () => this._call('record_day'));
     this.shadowRoot.getElementById('t')?.addEventListener('click', () => {
       this._showTrack = !this._showTrack;
