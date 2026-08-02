@@ -59,6 +59,10 @@ class StepChallengeCard extends HTMLElement {
 
   set panel(v) {
     this._isPanel = true;
+    if (!this._initialized) {
+      this._buildDOM();
+      this._initialized = true;
+    }
     const mb = this.shadowRoot.getElementById('menu-btn');
     if (mb) mb.style.display = '';
   }
@@ -183,7 +187,10 @@ class StepChallengeCard extends HTMLElement {
   _pct()       { return parseInt(this._find('days_elapsed')?.attributes?.progress_pct)||0; }
   _start()     { return this._find('days_elapsed')?.attributes?.start_date||null; }
   _history()   { return this._find('_status')?.attributes?.history||[]; }
-  _archive()   { return (this._find('_archive')?.attributes?.challenges||[]).slice().reverse(); }
+  _archive()   {
+    const s = Object.values(this._hass?.states||{}).find(s => s.entity_id.endsWith('_archive') && s.entity_id.includes(SC));
+    return (s?.attributes?.challenges||[]).slice().reverse();
+  }
   _recTime()   { return this._find('_status')?.attributes?.record_time||'23:00:00'; }
 
   _name() {
