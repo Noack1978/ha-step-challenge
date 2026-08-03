@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState, HomeAssistant, ServiceCall, callback
 from homeassistant.util.dt import now as ha_now
+import homeassistant.util.dt as dt_util
 
 from .const import (
     CARD_FILE,
@@ -198,16 +199,44 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 continue
             parts = _participants(entry_id)
             steps: dict[str, int] = {}
-            for p in parts:
-                state = hass.states.get(p["entity"])
-                try:
-                    steps[p["key"]] = (
-                        int(float(state.state))
-                        if state and state.state not in ("unknown", "unavailable")
-                        else 0
-                    )
-                except (ValueError, TypeError):
-                    steps[p["key"]] = 0
+
+            # For next_day_eval: read yesterday's last known value from recorder
+            if next_day:
+                from datetime import date, timedelta as td
+                from homeassistant.components.recorder import get_instance
+                from homeassistant.components.recorder.history import get_last_state_changes
+                yesterday_end = datetime.combine(
+                    date.today(), datetime.min.time()
+                ).replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+
+                for p in parts:
+                    try:
+                        recorder = get_instance(hass)
+                        history = await recorder.async_add_executor_job(
+                            get_last_state_changes,
+                            hass, 1, p["entity"],
+                            yesterday_end,
+                        )
+                        entity_history = history.get(p["entity"], [])
+                        if entity_history:
+                            last_state = entity_history[-1]
+                            steps[p["key"]] = int(float(last_state.state)) if last_state.state not in ("unknown", "unavailable") else 0
+                        else:
+                            steps[p["key"]] = 0
+                    except Exception as err:
+                        _LOGGER.warning("Step Challenge: could not read history for %s: %s", p["entity"], err)
+                        steps[p["key"]] = 0
+            else:
+                for p in parts:
+                    state = hass.states.get(p["entity"])
+                    try:
+                        steps[p["key"]] = (
+                            int(float(state.state))
+                            if state and state.state not in ("unknown", "unavailable")
+                            else 0
+                        )
+                    except (ValueError, TypeError):
+                        steps[p["key"]] = 0
 
             if not steps or all(v == 0 for v in steps.values()):
                 _LOGGER.warning("Step Challenge: no valid step data")
@@ -222,12 +251,6 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             next_day = e.options.get(
                 CONF_NEXT_DAY_EVAL,
                 e.data.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
-            )
-            _LOGGER.warning(
-                "Step Challenge: next_day_eval=%s, options=%s, data=%s",
-                next_day,
-                e.options.get(CONF_NEXT_DAY_EVAL, "NOT IN OPTIONS"),
-                e.data.get(CONF_NEXT_DAY_EVAL, "NOT IN DATA"),
             )
             from datetime import timedelta
             eval_date = datetime.now() - timedelta(days=1) if next_day else datetime.now()
