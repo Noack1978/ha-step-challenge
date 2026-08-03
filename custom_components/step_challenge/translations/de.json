@@ -91,12 +91,10 @@
           "challenge_name": "Challenge-Name",
           "duration_days": "Dauer (Tage, 7–365)",
           "record_time": "Auswertungszeit (täglich)",
-          "show_blueprint_hint": "Blueprint-Hinweis anzeigen",
           "next_day_eval": "Auswertung am Folgetag"
         },
         "data_description": {
           "record_time": "Uhrzeit, zu der täglich der Tagessieger ermittelt wird.",
-          "show_blueprint_hint": "Beim Start eine Benachrichtigung mit dem Blueprint-Link anzeigen. Deaktivieren wenn der Blueprint bereits eingerichtet ist.",
           "next_day_eval": "Aktivieren wenn die Schrittzähler erst nach Mitternacht synchronisieren. Die Auswertung wird dann dem Vortag zugerechnet."
         }
       }
