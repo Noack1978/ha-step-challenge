@@ -223,6 +223,12 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 CONF_NEXT_DAY_EVAL,
                 e.data.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
             )
+            _LOGGER.warning(
+                "Step Challenge: next_day_eval=%s, options=%s, data=%s",
+                next_day,
+                e.options.get(CONF_NEXT_DAY_EVAL, "NOT IN OPTIONS"),
+                e.data.get(CONF_NEXT_DAY_EVAL, "NOT IN DATA"),
+            )
             from datetime import timedelta
             eval_date = datetime.now() - timedelta(days=1) if next_day else datetime.now()
             date_str = eval_date.strftime("%Y-%m-%d")
