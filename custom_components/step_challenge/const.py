@@ -27,7 +27,6 @@ CONF_DURATION_DAYS: Final[str]               = "duration_days"
 CONF_PARTICIPANTS: Final[str]                = "participants"
 CONF_RECORD_TIME: Final[str]                 = "record_time"
 CONF_NEXT_DAY_EVAL: Final[str]               = "next_day_eval"
-CONF_SHOW_BLUEPRINT_HINT: Final[str]         = "show_blueprint_hint"
 
 # Services
 SERVICE_START: Final[str]      = "start"
@@ -39,6 +38,5 @@ DEFAULT_CHALLENGE_NAME: Final[str]    = "Step Challenge"
 DEFAULT_DURATION_DAYS: Final[int]     = 30
 DEFAULT_RECORD_TIME: Final[str]       = "23:00:00"
 DEFAULT_NEXT_DAY_EVAL: Final[bool]     = False
-DEFAULT_SHOW_BLUEPRINT_HINT: Final[bool] = True
 MIN_PARTICIPANTS: Final[int]          = 2
 MAX_HISTORY: Final[int]               = 365

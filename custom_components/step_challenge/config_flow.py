@@ -16,11 +16,9 @@ from .const import (
     CONF_PARTICIPANTS,
     CONF_RECORD_TIME,
     DEFAULT_NEXT_DAY_EVAL,
-    CONF_SHOW_BLUEPRINT_HINT,
     DEFAULT_CHALLENGE_NAME,
     DEFAULT_DURATION_DAYS,
     DEFAULT_RECORD_TIME,
-    DEFAULT_SHOW_BLUEPRINT_HINT,
     DOMAIN,
     MIN_PARTICIPANTS,
 )
@@ -105,7 +103,6 @@ class StepChallengeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_DURATION_DAYS:  self._duration,
                     CONF_RECORD_TIME:    self._record_time,
                     CONF_PARTICIPANTS:        self._participants,
-                    CONF_SHOW_BLUEPRINT_HINT: DEFAULT_SHOW_BLUEPRINT_HINT,
                     CONF_NEXT_DAY_EVAL:       self._next_day,
                 },
             )
@@ -142,9 +139,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
         )
         self._record_time: str = config_entry.options.get(
             CONF_RECORD_TIME, config_entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME)
-        )
-        self._show_hint: bool = config_entry.options.get(
-            CONF_SHOW_BLUEPRINT_HINT, config_entry.data.get(CONF_SHOW_BLUEPRINT_HINT, DEFAULT_SHOW_BLUEPRINT_HINT)
         )
         self._next_day: bool = config_entry.options.get(
             CONF_NEXT_DAY_EVAL, config_entry.data.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
@@ -259,7 +253,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
             self._duration    = int(user_input[CONF_DURATION_DAYS])
             self._record_time = user_input[CONF_RECORD_TIME]
             self._next_day    = user_input[CONF_NEXT_DAY_EVAL]
-            self._show_hint   = user_input[CONF_SHOW_BLUEPRINT_HINT]
             return self._save()
 
         return self.async_show_form(
@@ -271,7 +264,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                 ),
                 vol.Required(CONF_RECORD_TIME, default=self._record_time): _TIME_SELECTOR,
                 vol.Required(CONF_NEXT_DAY_EVAL, default=self._next_day): bool,
-                vol.Required(CONF_SHOW_BLUEPRINT_HINT, default=self._show_hint): bool,
             }),
         )
 
@@ -283,7 +275,6 @@ class StepChallengeOptionsFlow(config_entries.OptionsFlowWithReload):
                 CONF_DURATION_DAYS:       self._duration,
                 CONF_RECORD_TIME:         self._record_time,
                 CONF_PARTICIPANTS:        self._participants,
-                CONF_SHOW_BLUEPRINT_HINT: self._show_hint,
                 CONF_NEXT_DAY_EVAL:       self._next_day,
             },
         )

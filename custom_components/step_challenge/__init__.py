@@ -15,11 +15,13 @@ from homeassistant.util.dt import now as ha_now
 
 from .const import (
     CARD_FILE,
+    CONF_CHALLENGE_NAME,
+    CONF_DURATION_DAYS,
+    CONF_NEXT_DAY_EVAL,
     CONF_PARTICIPANTS,
     CONF_RECORD_TIME,
-    CONF_SHOW_BLUEPRINT_HINT,
+    DEFAULT_NEXT_DAY_EVAL,
     DEFAULT_RECORD_TIME,
-    DEFAULT_SHOW_BLUEPRINT_HINT,
     DOMAIN,
     INTEGRATION_VERSION,
     PANEL_NAME,
@@ -89,29 +91,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _register_panel)
 
     _register_services(hass, entry)
+    _register_daily_timer(hass, entry)
 
     record_time = entry.options.get(
         CONF_RECORD_TIME,
         entry.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME),
     )
-    show_hint = entry.options.get(
-        CONF_SHOW_BLUEPRINT_HINT,
-        entry.data.get(CONF_SHOW_BLUEPRINT_HINT, DEFAULT_SHOW_BLUEPRINT_HINT),
-    )
-    if show_hint:
-        pn_create(
-            hass,
-            title="Step Challenge",
-            message=(
-                f"✅ Step Challenge ist bereit!\n\n"
-                f"Blueprint importieren für die tägliche Auswertung um **{record_time}**:\n"
-                f"*Einstellungen → Automationen → Blueprints → Blueprint importieren*\n\n"
-                f"`https://github.com/Noack1978/ha-step-challenge/blob/main/"
-                f"blueprints/automation/step_challenge/daily_stage.yaml`\n\n"
-                f"Diesen Hinweis deaktivieren: *Konfigurieren → Challenge-Einstellungen*"
-            ),
-            notification_id=f"{DOMAIN}_setup_hint",
-        )
 
     return True
 
@@ -135,6 +120,46 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 # ── Services ──────────────────────────────────────────────────────────────────
+
+def _register_daily_timer(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register a daily time-based trigger to auto-evaluate the stage."""
+    from homeassistant.helpers.event import async_track_time_change
+
+    _unsub: list = []
+
+    async def _auto_record(_now) -> None:
+        e = hass.config_entries.async_get_entry(entry.entry_id)
+        if not e:
+            return
+        store = hass.data.get(DOMAIN, {}).get(entry.entry_id, {}).get("store")
+        if not store or not store.active:
+            return
+        _LOGGER.info("Step Challenge: auto daily evaluation triggered")
+        await hass.services.async_call(DOMAIN, SERVICE_RECORD_DAY, {})
+
+    def _subscribe() -> None:
+        e = hass.config_entries.async_get_entry(entry.entry_id)
+        t = e.options.get(CONF_RECORD_TIME, e.data.get(CONF_RECORD_TIME, DEFAULT_RECORD_TIME))
+        parts = t.split(":")
+        h, m, s = int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0
+        if _unsub:
+            _unsub[0]()
+            _unsub.clear()
+        unsub = async_track_time_change(hass, _auto_record, hour=h, minute=m, second=s)
+        _unsub.append(unsub)
+        _LOGGER.info("Step Challenge: daily evaluation scheduled at %02d:%02d:%02d", h, m, s)
+
+    _subscribe()
+
+    # Re-subscribe when options change (e.g. user changes evaluation time)
+    @callback
+    def _on_options_updated(_event) -> None:
+        _subscribe()
+
+    unsub_event = hass.bus.async_listen(f"{DOMAIN}_settings_updated", _on_options_updated)
+    entry.async_on_unload(unsub_event)
+    entry.async_on_unload(lambda: _unsub[0]() if _unsub else None)
+
 
 def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
