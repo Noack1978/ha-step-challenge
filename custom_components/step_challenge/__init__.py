@@ -200,6 +200,13 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             parts = _participants(entry_id)
             steps: dict[str, int] = {}
 
+            # Determine if next_day_eval is active
+            e_cfg = hass.config_entries.async_get_entry(entry_id)
+            next_day = e_cfg.options.get(
+                CONF_NEXT_DAY_EVAL,
+                e_cfg.data.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
+            )
+
             # For next_day_eval: read yesterday's last known value from recorder
             if next_day:
                 from datetime import date, timedelta as td
@@ -247,11 +254,6 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 (p["name"] for p in parts if p["key"] == winner_key), winner_key
             )
             # If next_day_eval is active, score goes to yesterday
-            e = hass.config_entries.async_get_entry(entry_id)
-            next_day = e.options.get(
-                CONF_NEXT_DAY_EVAL,
-                e.data.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
-            )
             from datetime import timedelta
             eval_date = datetime.now() - timedelta(days=1) if next_day else datetime.now()
             date_str = eval_date.strftime("%Y-%m-%d")
