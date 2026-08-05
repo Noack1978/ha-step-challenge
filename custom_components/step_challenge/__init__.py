@@ -225,7 +225,8 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 for p in parts:
                     try:
                         recorder = get_instance(hass)
-                        # Get last state before midnight (descending=True, limit=1)
+                        # Get all states of yesterday, find peak (max) value
+                        # Daily step sensors reset to 0 at midnight, so we want the maximum
                         history = await recorder.async_add_executor_job(
                             state_changes_during_period,
                             hass,
@@ -233,15 +234,21 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                             yesterday_end,
                             p["entity"],
                             False,   # no_attributes
-                            True,    # descending
-                            1,       # limit - only last entry
+                            False,   # ascending order
                         )
                         entity_history = history.get(p["entity"], [])
                         if entity_history:
-                            last_state = entity_history[0]  # first = last due to descending
-                            val = int(float(last_state.state)) if last_state.state not in ("unknown", "unavailable") else 0
-                            steps[p["key"]] = val
-                            _LOGGER.warning("Step Challenge: %s yesterday=%s (last_changed=%s)", p["entity"], val, last_state.last_changed)
+                            # Find the maximum value (peak steps before midnight reset)
+                            max_val = 0
+                            for state in entity_history:
+                                try:
+                                    v = int(float(state.state))
+                                    if v > max_val:
+                                        max_val = v
+                                except (ValueError, TypeError):
+                                    pass
+                            steps[p["key"]] = max_val
+                            _LOGGER.warning("Step Challenge: %s yesterday_max=%s (from %d states)", p["entity"], max_val, len(entity_history))
                         else:
                             steps[p["key"]] = 0
                             _LOGGER.warning("Step Challenge: %s no history found for %s to %s", p["entity"], yesterday_start, yesterday_end)
