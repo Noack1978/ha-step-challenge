@@ -165,7 +165,7 @@ class StepChallengeCard extends HTMLElement {
       </div>
       <div class="btn-wrap">
         ${status === 'active'
-          ? `<button class="btn btn-rec"   id="r">🏁 Etappe beenden</button>
+          ? `${!this._find('_status')?.attributes?.next_day_eval ? `<button class="btn btn-rec" id="r">🏁 Etappe beenden</button>` : ''}
              <button class="btn btn-stop"  id="x">⏹ Stoppen</button>`
           : `<button class="btn btn-start" id="s">🚩 Start</button>`}
         <button class="btn btn-settings" id="cfg">⚙️ Einstellungen</button>
