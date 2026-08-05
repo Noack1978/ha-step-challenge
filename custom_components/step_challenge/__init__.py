@@ -193,6 +193,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         hass.bus.async_fire(f"{DOMAIN}_stopped")
 
     async def _record_day(call: ServiceCall) -> None:
+        force_today = call.data.get("force_today", False)
         for entry_id in _entry_ids():
             store = _store(entry_id)
             if not store.active:
@@ -202,7 +203,7 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
             # Determine if next_day_eval is active
             e_cfg = hass.config_entries.async_get_entry(entry_id)
-            next_day = e_cfg.options.get(
+            next_day = (not force_today) and e_cfg.options.get(
                 CONF_NEXT_DAY_EVAL,
                 e_cfg.data.get(CONF_NEXT_DAY_EVAL, DEFAULT_NEXT_DAY_EVAL)
             )
