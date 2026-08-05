@@ -213,32 +213,38 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 from homeassistant.components.recorder import get_instance
                 from homeassistant.components.recorder.history import state_changes_during_period
 
+                local_tz = dt_util.get_default_time_zone()
+                today_local = datetime.now(local_tz).date()
                 yesterday_start = datetime.combine(
-                    date.today() - td(days=1), datetime.min.time()
-                ).replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+                    today_local - td(days=1), datetime.min.time()
+                ).replace(tzinfo=local_tz)
                 yesterday_end = datetime.combine(
-                    date.today(), datetime.min.time()
-                ).replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+                    today_local, datetime.min.time()
+                ).replace(tzinfo=local_tz)
 
                 for p in parts:
                     try:
                         recorder = get_instance(hass)
+                        # Get last state before midnight (descending=True, limit=1)
                         history = await recorder.async_add_executor_job(
                             state_changes_during_period,
                             hass,
                             yesterday_start,
                             yesterday_end,
                             p["entity"],
-                            False,
-                            True,
+                            False,   # no_attributes
+                            True,    # descending
+                            1,       # limit - only last entry
                         )
                         entity_history = history.get(p["entity"], [])
                         if entity_history:
-                            # Take the last known value of yesterday
-                            last_state = entity_history[-1]
-                            steps[p["key"]] = int(float(last_state.state)) if last_state.state not in ("unknown", "unavailable") else 0
+                            last_state = entity_history[0]  # first = last due to descending
+                            val = int(float(last_state.state)) if last_state.state not in ("unknown", "unavailable") else 0
+                            steps[p["key"]] = val
+                            _LOGGER.warning("Step Challenge: %s yesterday=%s (last_changed=%s)", p["entity"], val, last_state.last_changed)
                         else:
                             steps[p["key"]] = 0
+                            _LOGGER.warning("Step Challenge: %s no history found for %s to %s", p["entity"], yesterday_start, yesterday_end)
                     except Exception as err:
                         _LOGGER.warning("Step Challenge: could not read history for %s: %s", p["entity"], err)
                         steps[p["key"]] = 0
