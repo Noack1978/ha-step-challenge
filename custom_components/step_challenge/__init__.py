@@ -211,7 +211,11 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             if next_day:
                 from datetime import date, timedelta as td
                 from homeassistant.components.recorder import get_instance
-                from homeassistant.components.recorder.history import get_last_state_changes
+                from homeassistant.components.recorder.history import state_changes_during_period
+
+                yesterday_start = datetime.combine(
+                    date.today() - td(days=1), datetime.min.time()
+                ).replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
                 yesterday_end = datetime.combine(
                     date.today(), datetime.min.time()
                 ).replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
@@ -220,12 +224,17 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                     try:
                         recorder = get_instance(hass)
                         history = await recorder.async_add_executor_job(
-                            get_last_state_changes,
-                            hass, 1, p["entity"],
+                            state_changes_during_period,
+                            hass,
+                            yesterday_start,
                             yesterday_end,
+                            p["entity"],
+                            False,
+                            True,
                         )
                         entity_history = history.get(p["entity"], [])
                         if entity_history:
+                            # Take the last known value of yesterday
                             last_state = entity_history[-1]
                             steps[p["key"]] = int(float(last_state.state)) if last_state.state not in ("unknown", "unavailable") else 0
                         else:
