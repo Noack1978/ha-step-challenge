@@ -251,7 +251,6 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                                 except (ValueError, TypeError):
                                     pass
                             steps[p["key"]] = last_val
-                            _LOGGER.warning("Step Challenge: %s yesterday_last=%s (from %d states, ts=%s)", p["entity"], last_val, len(entity_history), entity_history[-1].last_changed if entity_history else 'n/a')
                         else:
                             steps[p["key"]] = 0
                             _LOGGER.warning("Step Challenge: %s no history found for %s to %s", p["entity"], yesterday_start, yesterday_end)
