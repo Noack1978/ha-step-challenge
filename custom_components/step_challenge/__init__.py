@@ -239,17 +239,19 @@ def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                         )
                         entity_history = history.get(p["entity"], [])
                         if entity_history:
-                            # Find the maximum value (peak steps before midnight reset)
-                            max_val = 0
-                            for state in entity_history:
+                            # Take the last non-zero value before midnight reset
+                            # Iterate in reverse to find last value > 0
+                            last_val = 0
+                            for state in reversed(entity_history):
                                 try:
                                     v = int(float(state.state))
-                                    if v > max_val:
-                                        max_val = v
+                                    if v > 0:
+                                        last_val = v
+                                        break
                                 except (ValueError, TypeError):
                                     pass
-                            steps[p["key"]] = max_val
-                            _LOGGER.warning("Step Challenge: %s yesterday_max=%s (from %d states)", p["entity"], max_val, len(entity_history))
+                            steps[p["key"]] = last_val
+                            _LOGGER.warning("Step Challenge: %s yesterday_last=%s (from %d states, ts=%s)", p["entity"], last_val, len(entity_history), entity_history[-1].last_changed if entity_history else 'n/a')
                         else:
                             steps[p["key"]] = 0
                             _LOGGER.warning("Step Challenge: %s no history found for %s to %s", p["entity"], yesterday_start, yesterday_end)
